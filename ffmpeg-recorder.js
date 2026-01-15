@@ -24,17 +24,20 @@ class FFmpegRecorder {
     this.ffmpegPath = getFFmpegPath();
   }
 
-  // Start recording a specific window
-  async startWindowRecording(windowTitle, outputPath) {
-    this.outputPath = outputPath || path.join(process.cwd(), `recording-${Date.now()}.mp4`);
+  // Start recording a specific window (using Desktop capture since we maximize it)
+  async startWindowRecording(windowHandle, windowTitle, outputPath) {
+    const recDir = path.join(process.cwd(), 'recs');
+    if (!fs.existsSync(recDir)) fs.mkdirSync(recDir);
+    this.outputPath = outputPath || path.join(recDir, `recording-${Date.now()}.mp4`);
     
-    // FFmpeg gdigrab uses 'title=WINDOW_TITLE'
-    // Note: Some windows might have special characters that need escaping.
+    // We use 'desktop' instead of 'hwnd=' or 'title=' because it's significantly 
+    // more stable with hardware-accelerated apps (Chrome, Discord, VS Code).
+    // Since we maximize the window, 'desktop' capture is exactly what we want.
     const args = [
       '-f', 'gdigrab',
       '-draw_mouse', '0',
       '-framerate', '30',
-      '-i', `title=${windowTitle}`,
+      '-i', 'desktop', 
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
       '-pix_fmt', 'yuv420p',
@@ -42,18 +45,16 @@ class FFmpegRecorder {
       this.outputPath
     ];
 
-    console.log(`Spawning FFmpeg (${this.ffmpegPath}) with args:`, args.join(' '));
+    console.log(`Starting capture for: ${windowTitle}`);
 
     return new Promise((resolve, reject) => {
       this.process = spawn(this.ffmpegPath, args);
       
       let started = false;
-      
+
       this.process.stderr.on('data', (data) => {
         const output = data.toString();
-        console.log('FFmpeg:', output);
-        
-        // Check if recording has started
+        // Check if recording has actually started
         if (!started && output.includes('frame=')) {
           started = true;
           resolve(this.outputPath);
@@ -61,14 +62,20 @@ class FFmpegRecorder {
       });
 
       this.process.on('error', (err) => {
-        console.error('FFmpeg error:', err);
+        console.error('FFmpeg failed to spawn:', err);
         if (!started) reject(err);
+      });
+
+      this.process.on('exit', (code) => {
+        if (code !== 0 && code !== null) {
+          console.error(`FFmpeg exited with code ${code}. This usually means capture was interrupted.`);
+        }
       });
 
       // Timeout if recording doesn't start
       setTimeout(() => {
         if (!started) {
-          reject(new Error('FFmpeg failed to start recording'));
+          reject(new Error('FFmpeg failed to start recording (Timeout)'));
         }
       }, 5000);
     });
@@ -76,7 +83,9 @@ class FFmpegRecorder {
 
   // Start recording full screen
   async startScreenRecording(outputPath) {
-    this.outputPath = outputPath || path.join(process.cwd(), `recording-${Date.now()}.mp4`);
+    const recDir = path.join(process.cwd(), 'recs');
+    if (!fs.existsSync(recDir)) fs.mkdirSync(recDir);
+    this.outputPath = outputPath || path.join(recDir, `recording-${Date.now()}.mp4`);
     
     const args = [
       '-f', 'gdigrab',
@@ -167,6 +176,7 @@ class FFmpegRecorder {
   saveMouseData(mouseData, jsonPath) {
     if (!mouseData || mouseData.length === 0) return null;
     
+    const recDir = path.join(process.cwd(), 'recs');
     const dataPath = jsonPath || this.outputPath.replace('.mp4', '-mouse.json');
     fs.writeFileSync(dataPath, JSON.stringify({
       positions: mouseData,

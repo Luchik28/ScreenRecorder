@@ -1,197 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recording</title>
+  <title>Reconstructed Recording</title>
   <style>
-    * {
+    body {
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #1a1a1a;
+      color: white;
+      font-family: system-ui, sans-serif;
       overflow: hidden;
-    }
-
-    #controls {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(20px);
-      padding: 16px 24px;
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
       display: flex;
-      gap: 12px;
-      align-items: center;
-      z-index: 1000;
+      flex-direction: column;
+      height: 100vh;
     }
-
-    .btn {
-      padding: 10px 20px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
+    .header {
+      padding: 15px 20px;
       display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 8px;
+      background: #2a2a2a;
+      border-bottom: 1px solid #3a3a3a;
     }
-
-    .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    #startBtn {
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
-    }
-
-    #stopBtn {
-      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-      color: white;
-      display: none;
-    }
-
-    #downloadBtn {
-      background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
-      color: white;
-      display: none;
-    }
-
-    #status {
-      font-size: 13px;
-      color: #666;
-      font-weight: 500;
-    }
-
-    #preview {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      max-width: 90%;
-      max-height: 70%;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      background: #000;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    #zoomContainer {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .recording-indicator {
-      width: 12px;
-      height: 12px;
-      background: #f5576c;
-      border-radius: 50%;
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
-        transform: scale(1);
-      }
-      50% {
-        opacity: 0.6;
-        transform: scale(1.2);
-      }
-    }
-
-    #timeline {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 80%;
-      max-width: 800px;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(20px);
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-      display: none;
-    }
-
-    #timeline.active {
-      display: block;
-    }
-
-    .timeline-track {
-      width: 100%;
-      height: 60px;
-      background: #f0f0f0;
-      border-radius: 8px;
+    .video-container {
       position: relative;
-      margin-bottom: 12px;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       overflow: hidden;
     }
-
-    .zoom-marker {
-      position: absolute;
-      top: 0;
-      height: 100%;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      opacity: 0.3;
-      border-left: 2px solid #667eea;
-      border-right: 2px solid #667eea;
-      cursor: move;
+    video {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
     }
-
-    .timeline-controls {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
+    #purple-cursor {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      pointer-events: none;
+      z-index: 100;
+      display: none;
+    }
+    .save-btn {
+      background: #a855f7;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .save-btn:hover {
+      background: #9333ea;
     }
   </style>
 </head>
 <body>
-  <div id="controls">
-    <div id="status">Ready to record</div>
-    <button id="startBtn" class="btn">
-      <span>⏺</span>
-      Start Recording
-    </button>
-    <button id="stopBtn" class="btn">
-      <span>⏹</span>
-      Stop Recording
-    </button>
-    <div class="recording-indicator" style="display: none;" id="recordingDot"></div>
-    <button id="downloadBtn" class="btn">
-      <span>⬇</span>
-      Download Video
-    </button>
+  <div class="header">
+    <div>Promo Screen Recorder - Replay</div>
+    <button class="save-btn" id="saveBtn">Save to Downloads</button>
   </div>
-
-  <div id="zoomContainer">
-    <video id="preview" autoplay muted></video>
-  </div>
-
-  <div id="timeline">
-    <h3 style="margin-bottom: 12px; color: #333;">Edit Zoom Points</h3>
-    <div class="timeline-track" id="timelineTrack"></div>
-    <div class="timeline-controls">
-      <button class="btn" id="addZoomBtn">+ Add Zoom</button>
-      <button class="btn" id="clearZoomsBtn">Clear All</button>
+  <div class="video-container" id="container">
+    <video id="player" controls></video>
+    <div id="purple-cursor">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M5.65376 12.3673L15.1533 17.8692C16.5741 18.6918 18.2562 17.3753 17.7812 15.8231L13.8827 3.08381C13.4357 1.62319 11.4116 1.48705 10.761 2.8722L5.27181 14.5458C4.69678 15.7686 5.86561 17.1524 7.15376 16.5161L5.65376 12.3673Z" fill="#a855f7" stroke="white" stroke-width="1.5"/>
+      </svg>
     </div>
   </div>
 
-  <script src="recording.js"></script>
+  <script src="recording-view.js"></script>
 </body>
 </html>

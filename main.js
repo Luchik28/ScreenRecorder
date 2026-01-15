@@ -1,11 +1,17 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, screen, session } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, screen, session, protocol } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const FFmpegRecorder = require('./ffmpeg-recorder');
 const { getWindows, maximizeWindow, getWindowRect } = require('./window-utils');
 
 let recorder = new FFmpegRecorder();
 
 let mainWindow;
+
+// Register custom protocol for local media
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'media', privileges: { bypassCSP: true, stream: true } }
+]);
 
 function createMainWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
@@ -32,35 +38,22 @@ function createMainWindow() {
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   
-  // Open DevTools for debugging
-  // mainWindow.webContents.openDevTools();
+    // Ensure it doesn't minimize when losing focus
+    mainWindow.on('blur', () => {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    });
 }
 
 app.whenReady().then(() => {
-  // Commenting out custom handler to allow native system picker (more reliable)
-  /*
-  try {
-    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-      // Fallback when system picker is unavailable: pick first screen
-      desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } })
-        .then((sources) => {
-          const screenSource = sources.find(s => s.id && s.id.startsWith('screen:')) || sources[0];
-          if (screenSource) {
-            callback({ video: screenSource });
-          } else {
-            console.error('No capturable sources found');
-            callback({ video: null });
-          }
-        })
-        .catch(err => {
-          console.error('desktopCapturer.getSources failed:', err);
-          callback({ video: null });
-        });
-    }, { useSystemPicker: true });
-  } catch (e) {
-    console.error('Failed to set display media request handler:', e);
-  }
-  */
+  // Handle local media loading
+  protocol.registerFileProtocol('media', (request, callback) => {
+    const url = request.url.replace('media:///', '');
+    try {
+      return callback({ path: path.normalize(decodeURIComponent(url)) });
+    } catch (error) {
+      console.error('Failed to register protocol', error);
+    }
+  });
 
   createMainWindow();
 
@@ -78,18 +71,21 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('get-sources', async () => {
-  console.log('IPC: get-sources called');
   try {
-    // Get thumbnails from Electron's desktopCapturer as well
+    // Suppress console errors from desktopCapturer thumbnails
     const electronSources = await desktopCapturer.getSources({ 
       types: ['window', 'screen'], 
-      thumbnailSize: { width: 300, height: 200 } 
-    });
+      thumbnailSize: { width: 1280, height: 720 },
+      fetchWindowIcons: true
+    }).catch(() => []);
 
     const windows = await getWindows();
     const results = windows.map(win => {
-      // Try to find a matching Electron source for the thumbnail
-      const match = electronSources.find(s => s.name === win.Title || s.id.includes(win.ProcessId.toString()));
+      // Improved matching logic: try title, then try substring matches
+      let match = electronSources.find(s => s.name === win.Title);
+      if (!match) {
+        match = electronSources.find(s => win.Title.includes(s.name) || s.name.includes(win.Title));
+      }
       
       return {
         id: `win32:${win.Handle}`,
@@ -168,22 +164,47 @@ ipcMain.on('shrink-window', () => {
 // Hide/show toolbar window (best effort to avoid full-screen capture)
 ipcMain.on('hide-toolbar', () => {
   if (mainWindow) {
-    mainWindow.hide();
+    // Instead of hide(), we set opacity to 0 and make it click-through
+    // to keep it "active" in the OS but invisible to the capture.
+    mainWindow.setOpacity(0.01); 
+    mainWindow.setIgnoreMouseEvents(true);
   }
 });
 
 ipcMain.on('show-toolbar', () => {
   if (mainWindow) {
-    mainWindow.show();
+    mainWindow.setOpacity(1.0);
+    mainWindow.setIgnoreMouseEvents(false);
     mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   }
 });
 
 // Handle manual window maximization
 ipcMain.handle('maximize-target-window', async (event, handle) => {
-  return await maximizeWindow(handle);
+  const result = await maximizeWindow(handle);
+  // Optimization: Shrink toolbar window fast after clicking
+  if (mainWindow) {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width } = primaryDisplay.workAreaSize;
+    mainWindow.setBounds({
+      width: 800,
+      height: 80,
+      x: Math.floor((width - 800) / 2),
+      y: 20
+    }, false); // Set useAnchor to false/immediate
+  }
+  return result;
 });
-
+// Save video to downloads
+ipcMain.on('save-video-to-downloads', (event, videoPath) => {
+  const { shell } = require('electron');
+  const downloadsPath = path.join(require('os').homedir(), 'Downloads');
+  const fileName = path.basename(videoPath);
+  const destPath = path.join(downloadsPath, fileName);
+  
+  fs.copyFileSync(videoPath, destPath);
+  shell.showItemInFolder(destPath);
+});
 // Start FFmpeg recording
 ipcMain.handle('start-recording', async (event, options) => {
   try {
@@ -192,7 +213,7 @@ ipcMain.handle('start-recording', async (event, options) => {
     let videoPath;
     
     if (options.type === 'window' && options.windowHandle) {
-      // Get window title for FFmpeg (needs to be exact for title= prefix)
+      // Get window info
       const windows = await getWindows();
       const targetWindow = windows.find(w => w.Handle == options.windowHandle);
       
@@ -202,7 +223,7 @@ ipcMain.handle('start-recording', async (event, options) => {
       await maximizeWindow(options.windowHandle);
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for maximize animation
       
-      videoPath = await recorder.startWindowRecording(targetWindow.Title);
+      videoPath = await recorder.startWindowRecording(options.windowHandle, targetWindow.Title);
     } else {
       // Full screen recording
       videoPath = await recorder.startScreenRecording();
@@ -223,16 +244,43 @@ ipcMain.handle('stop-recording', async () => {
   try {
     const result = await recorder.stopRecording();
     
-    if (result && result.mouseData.length > 0) {
-      const mouseDataPath = recorder.saveMouseData(result.mouseData);
+    if (result && result.videoPath) {
+      // Save mouse data
+      let mouseDataPath = null;
+      if (result.mouseData && result.mouseData.length > 0) {
+        mouseDataPath = recorder.saveMouseData(result.mouseData);
+      }
+
+      console.log('Recording saved:', result.videoPath);
+      
+      // Close toolbar window
+      if (mainWindow) {
+        mainWindow.close();
+        mainWindow = null;
+      }
+      
+      const previewWindow = new BrowserWindow({
+        width: 1280,
+        height: 800,
+        backgroundColor: '#1a1a1a',
+        autoHideMenuBar: true,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false,
+          webSecurity: false // Allow loading local files for the preview
+        }
+      });
+      
+      const query = `video=${encodeURIComponent(result.videoPath)}&mouse=${encodeURIComponent(mouseDataPath || '')}`;
+      previewWindow.loadFile('recording.html', { search: query });
+      
       return {
         success: true,
         videoPath: result.videoPath,
-        mouseDataPath
+        mouseDataPath: mouseDataPath
       };
     }
-    
-    return { success: true, videoPath: result?.videoPath };
+    return { success: false, error: 'Recording failed' };
   } catch (err) {
     console.error('Recording stop failed:', err);
     return { success: false, error: err.message };
