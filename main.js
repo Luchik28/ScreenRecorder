@@ -221,7 +221,8 @@ ipcMain.handle('start-recording', async (event, options) => {
 
       // Maximize the window first
       await maximizeWindow(options.windowHandle);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for maximize animation
+      // Reduced delay since we pre-maximize during countdown
+      await new Promise(resolve => setTimeout(resolve, 300)); 
       
       videoPath = await recorder.startWindowRecording(options.windowHandle, targetWindow.Title);
     } else {

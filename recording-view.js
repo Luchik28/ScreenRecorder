@@ -38,14 +38,32 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Update cursor position based on video time
-    videoElement.addEventListener('timeupdate', () => {
-        if (mousePositions.length === 0) return;
-        
+    // Binary search for efficiency with high-frequency data
+    function findMousePosition(time) {
+        let low = 0;
+        let high = mousePositions.length - 1;
+        let bestIndex = -1;
+
+        while (low <= high) {
+            let mid = Math.floor((low + high) / 2);
+            if (mousePositions[mid].time >= time) {
+                bestIndex = mid;
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        }
+        return bestIndex !== -1 ? mousePositions[bestIndex] : null;
+    }
+
+    function updateCursor() {
+        if (mousePositions.length === 0 || videoElement.paused) {
+            requestAnimationFrame(updateCursor);
+            return;
+        }
+
         const currentTimeMs = videoElement.currentTime * 1000;
-        
-        // Find closest mouse position
-        const pos = mousePositions.find(p => p.time >= currentTimeMs);
+        const pos = findMousePosition(currentTimeMs);
         
         if (pos) {
             const container = document.getElementById('container');
@@ -55,25 +73,27 @@ window.addEventListener('DOMContentLoaded', async () => {
             const videoWidth = videoElement.clientWidth;
             const videoHeight = videoElement.clientHeight;
             
-            // Re-calculate based on intrinsic video size if possible
-            const vW = videoElement.videoWidth || 1920;
-            const vH = videoElement.videoHeight || 1080;
-
             const videoLeft = (containerRect.width - videoWidth) / 2;
             const videoTop = (containerRect.height - videoHeight) / 2;
 
-            // These should match the screen resolution during recording
-            // For now we use the current screen resolution as a proxy
             const screenWidth = window.screen.width; 
             const screenHeight = window.screen.height;
 
             const xRatio = videoWidth / screenWidth;
             const yRatio = videoHeight / screenHeight;
 
-            cursor.style.left = `${videoLeft + (pos.x * xRatio)}px`;
-            cursor.style.top = `${videoTop + (pos.y * yRatio)}px`;
+            // Simplified update for performance
+            const targetX = videoLeft + (pos.x * xRatio);
+            const targetY = videoTop + (pos.y * yRatio);
+            
+            cursor.style.transform = `translate(${targetX}px, ${targetY}px)`;
+            cursor.style.display = 'block';
         }
-    });
+        requestAnimationFrame(updateCursor);
+    }
+    
+    // Start the animation loop
+    requestAnimationFrame(updateCursor);
     
     document.getElementById('saveBtn').addEventListener('click', () => {
         ipcRenderer.send('save-video-to-downloads', currentVideoPath);

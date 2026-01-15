@@ -36,7 +36,7 @@ class FFmpegRecorder {
     const args = [
       '-f', 'gdigrab',
       '-draw_mouse', '0',
-      '-framerate', '30',
+      '-framerate', '60',
       '-i', 'desktop', 
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
@@ -90,7 +90,7 @@ class FFmpegRecorder {
     const args = [
       '-f', 'gdigrab',
       '-draw_mouse', '0',  // Hide mouse cursor
-      '-framerate', '30',
+      '-framerate', '60',
       '-i', 'desktop',
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
@@ -133,6 +133,7 @@ class FFmpegRecorder {
     this.mousePositions = [];
     const startTime = Date.now();
     
+    // Increased frequency for super smooth playback (125 samples per second)
     this.mouseTrackingInterval = setInterval(() => {
       const point = screen.getCursorScreenPoint();
       const timestamp = Date.now() - startTime;
@@ -141,7 +142,7 @@ class FFmpegRecorder {
         y: point.y,
         time: timestamp
       });
-    }, 16); // ~60fps tracking
+    }, 8); 
   }
 
   // Stop recording

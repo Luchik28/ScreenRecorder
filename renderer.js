@@ -222,15 +222,32 @@ function hideSourceSelector() {
 
 // Start countdown
 async function startCountdown() {
+  const selectionStatus = document.getElementById('selectionStatus');
   recordBtn.style.display = 'none';
   countdown.style.display = 'block';
   
+  if (selectionStatus) {
+    selectionStatus.textContent = 'Preparing...';
+    selectionStatus.style.display = 'block';
+  }
+
+  // Pre-maximize the window during the early countdown
+  if (captureKind === 'window' && selectedWindowHandle) {
+     window.electronAPI.maximizeTargetWindow(selectedWindowHandle);
+  }
+
   for (let i = 3; i > 0; i--) {
     countdown.textContent = i;
     countdown.style.animation = 'none';
     setTimeout(() => {
       countdown.style.animation = 'pulse 0.5s ease-in-out';
     }, 10);
+    
+    // Switch to "Starting..." at the end
+    if (i === 1 && selectionStatus) {
+       selectionStatus.textContent = 'Starting FFmpeg...';
+    }
+    
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
   
@@ -245,13 +262,20 @@ async function startRecording() {
     return;
   }
 
-  // Hide the toolbar during recording
-  document.body.style.opacity = '0';
+  // Update status
+  const selectionStatus = document.getElementById('selectionStatus');
   
-  // Small delay to ensure toolbar is hidden
-  await new Promise(resolve => setTimeout(resolve, 100));
-
   try {
+    // Show preparing status immediately
+    if (selectionStatus) {
+      selectionStatus.textContent = 'Launching FFmpeg...';
+      selectionStatus.style.display = 'block';
+    }
+    
+    // We don't hide the toolbar anymore to prevent the "disappearing" flicker
+    // document.body.style.opacity = '0';
+    // window.electronAPI.hideToolbar();
+
     // Start FFmpeg recording
     const result = await window.electronAPI.startRecording({
       type: captureKind,
@@ -264,16 +288,12 @@ async function startRecording() {
     
     console.log('Recording started:', result.videoPath);
     
-    // Decide toolbar visibility: hide during full-screen capture (best effort)
-    if (captureKind === 'screen') {
-      // Keep toolbar hidden to avoid being in capture
-      window.electronAPI.hideToolbar();
-    } else {
-      document.body.style.opacity = '1';
-    }
+    // Only hide if it's full screen, but even then, the user wants it to stay.
+    // However, for full screen, keeping the toolbar might be annoying.
+    // But the user specially asked for it to stay, so let's keep it.
     
     // Hide status label
-    selectionStatus.style.display = 'none';
+    if (selectionStatus) selectionStatus.style.display = 'none';
 
     // Show timer and stop button
     stopBtn.style.display = 'flex';
@@ -284,7 +304,7 @@ async function startRecording() {
 
   } catch (err) {
     console.error('Error starting recording:', err);
-    document.body.style.opacity = '1';
+    // document.body.style.opacity = '1';
     alert('Could not start recording. Error: ' + err.message);
     recordBtn.style.display = 'flex';
   }
