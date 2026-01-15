@@ -2,12 +2,26 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+function getFFmpegPath() {
+  // Check common WinGet location found on this system
+  const wingetPath = path.join(
+    process.env.LOCALAPPDATA, 
+    'Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-8.0.1-full_build/bin/ffmpeg.exe'
+  ).replace(/\//g, '\\');
+
+  if (fs.existsSync(wingetPath)) return wingetPath;
+  
+  // Fallback to searching in PATH
+  return 'ffmpeg';
+}
+
 class FFmpegRecorder {
   constructor() {
     this.process = null;
     this.outputPath = null;
     this.mousePositions = [];
     this.mouseTrackingInterval = null;
+    this.ffmpegPath = getFFmpegPath();
   }
 
   // Start recording a specific window
@@ -28,10 +42,10 @@ class FFmpegRecorder {
       this.outputPath
     ];
 
-    console.log('Spawning FFmpeg with args:', args.join(' '));
+    console.log(`Spawning FFmpeg (${this.ffmpegPath}) with args:`, args.join(' '));
 
     return new Promise((resolve, reject) => {
-      this.process = spawn('ffmpeg', args);
+      this.process = spawn(this.ffmpegPath, args);
       
       let started = false;
       
@@ -77,7 +91,7 @@ class FFmpegRecorder {
     ];
 
     return new Promise((resolve, reject) => {
-      this.process = spawn('ffmpeg', args);
+      this.process = spawn(this.ffmpegPath, args);
       
       let started = false;
       

@@ -188,6 +188,7 @@ ipcMain.handle('maximize-target-window', async (event, handle) => {
 ipcMain.handle('start-recording', async (event, options) => {
   try {
     recorder = new FFmpegRecorder();
+    console.log('Using FFmpeg at:', recorder.ffmpegPath);
     let videoPath;
     
     if (options.type === 'window' && options.windowHandle) {
