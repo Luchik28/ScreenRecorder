@@ -223,60 +223,25 @@ function hideSourceSelector() {
 // Start countdown
 async function startCountdown() {
   const selectionStatus = document.getElementById('selectionStatus');
+  const toolbarLeft = document.querySelector('.toolbar-left');
+  
+  // Hide source selectors immediately as they are not needed during recording
+  if (toolbarLeft) toolbarLeft.style.display = 'none';
+  
   recordBtn.style.display = 'none';
-  countdown.style.display = 'block';
   
   if (selectionStatus) {
-    selectionStatus.textContent = 'Preparing...';
+    selectionStatus.textContent = 'Preparing FFmpeg...';
     selectionStatus.style.display = 'block';
   }
 
-  // Pre-maximize the window during the early countdown
+  // Pre-maximize the window during the early setup
   if (captureKind === 'window' && selectedWindowHandle) {
      window.electronAPI.maximizeTargetWindow(selectedWindowHandle);
   }
 
-  for (let i = 3; i > 0; i--) {
-    countdown.textContent = i;
-    countdown.style.animation = 'none';
-    setTimeout(() => {
-      countdown.style.animation = 'pulse 0.5s ease-in-out';
-    }, 10);
-    
-    // Switch to "Starting..." at the end
-    if (i === 1 && selectionStatus) {
-       selectionStatus.textContent = 'Starting FFmpeg...';
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  
-  countdown.style.display = 'none';
-  startRecording();
-}
-
-// Start recording
-async function startRecording() {
-  if (!selectedSourceId && !directStream && captureKind !== 'screen') {
-    alert('Please select a window or screen first');
-    return;
-  }
-
-  // Update status
-  const selectionStatus = document.getElementById('selectionStatus');
-  
   try {
-    // Show preparing status immediately
-    if (selectionStatus) {
-      selectionStatus.textContent = 'Launching FFmpeg...';
-      selectionStatus.style.display = 'block';
-    }
-    
-    // We don't hide the toolbar anymore to prevent the "disappearing" flicker
-    // document.body.style.opacity = '0';
-    // window.electronAPI.hideToolbar();
-
-    // Start FFmpeg recording
+    // Start FFmpeg immediately so it's "warmed up" by the time countdown ends
     const result = await window.electronAPI.startRecording({
       type: captureKind,
       windowHandle: selectedWindowHandle
@@ -285,30 +250,43 @@ async function startRecording() {
     if (!result.success) {
       throw new Error(result.error || 'Failed to start recording');
     }
+
+    // Now do the visual 3-2-1 countdown
+    countdown.style.display = 'block';
+    for (let i = 3; i > 0; i--) {
+      countdown.textContent = i;
+      countdown.style.animation = 'none';
+      setTimeout(() => {
+        countdown.style.animation = 'pulse 0.5s ease-in-out';
+      }, 10);
+      
+      if (selectionStatus) selectionStatus.textContent = i === 1 ? 'Go!' : 'Ready...';
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
     
-    console.log('Recording started:', result.videoPath);
-    
-    // Only hide if it's full screen, but even then, the user wants it to stay.
-    // However, for full screen, keeping the toolbar might be annoying.
-    // But the user specially asked for it to stay, so let's keep it.
-    
-    // Hide status label
+    countdown.style.display = 'none';
     if (selectionStatus) selectionStatus.style.display = 'none';
 
-    // Show timer and stop button
+    // Show timer and stop button (Mouse tracking started early for warmup)
     stopBtn.style.display = 'flex';
     timer.style.display = 'block';
     recordingStartTime = Date.now();
-    
     timerInterval = setInterval(updateTimer, 100);
 
   } catch (err) {
-    console.error('Error starting recording:', err);
-    // document.body.style.opacity = '1';
-    alert('Could not start recording. Error: ' + err.message);
+    console.error('Error in setup:', err);
+    if (selectionStatus) {
+        selectionStatus.textContent = 'Error starting recorder';
+        selectionStatus.style.color = '#ff4444';
+    }
+    alert('Could not start recording: ' + err.message);
+    if (toolbarLeft) toolbarLeft.style.display = 'flex';
     recordBtn.style.display = 'flex';
   }
 }
+
+// Start recording (Legacy function removed as logic moved to startCountdown)
+
 
 // Update timer display
 function updateTimer() {
@@ -343,6 +321,9 @@ async function stopRecording() {
     
     // Restore toolbar after recording stops
     window.electronAPI.showToolbar();
+    const toolbarLeft = document.querySelector('.toolbar-left');
+    if (toolbarLeft) toolbarLeft.style.display = 'flex';
+    
     document.body.style.opacity = '1';
     selectionStatus.style.display = 'block';
     directStream = null;

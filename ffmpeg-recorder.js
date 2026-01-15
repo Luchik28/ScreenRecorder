@@ -57,6 +57,7 @@ class FFmpegRecorder {
         // Check if recording has actually started
         if (!started && output.includes('frame=')) {
           started = true;
+          this.startMouseTracking(); // Start tracking exactly when video starts flowing
           resolve(this.outputPath);
         }
       });
@@ -110,6 +111,7 @@ class FFmpegRecorder {
         
         if (!started && output.includes('frame=')) {
           started = true;
+          this.startMouseTracking(); // Start tracking exactly when video starts flowing
           resolve(this.outputPath);
         }
       });

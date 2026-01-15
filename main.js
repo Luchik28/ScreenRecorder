@@ -38,6 +38,9 @@ function createMainWindow() {
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   
+  // Prevent toolbar from appearing in any screen recording
+  mainWindow.setContentProtection(true);
+  
     // Ensure it doesn't minimize when losing focus
     mainWindow.on('blur', () => {
       mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
@@ -205,7 +208,7 @@ ipcMain.on('save-video-to-downloads', (event, videoPath) => {
   fs.copyFileSync(videoPath, destPath);
   shell.showItemInFolder(destPath);
 });
-// Start FFmpeg recording
+// Start FFmpeg recording (Step 1: Video only)
 ipcMain.handle('start-recording', async (event, options) => {
   try {
     recorder = new FFmpegRecorder();
@@ -230,15 +233,14 @@ ipcMain.handle('start-recording', async (event, options) => {
       videoPath = await recorder.startScreenRecording();
     }
     
-    // Start mouse tracking
-    recorder.startMouseTracking();
-    
+    // We don't start mouse tracking here anymore - we wait for the trigger
     return { success: true, videoPath };
   } catch (err) {
     console.error('Recording start failed:', err);
     return { success: false, error: err.message };
   }
 });
+
 
 // Stop FFmpeg recording
 ipcMain.handle('stop-recording', async () => {
