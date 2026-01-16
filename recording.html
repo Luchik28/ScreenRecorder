@@ -1,39 +1,64 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Reconstructed Recording</title>
+  <title>Promo Video Editor</title>
   <style>
+    :root {
+      --primary: #a855f7;
+      --bg: #111;
+      --panel: #1e1e1e;
+      --border: #333;
+      --text: #eee;
+    }
     body {
       margin: 0;
       padding: 0;
-      background: #1a1a1a;
-      color: white;
-      font-family: system-ui, sans-serif;
-      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      height: 100vh;
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      overflow: hidden;
     }
     .header {
-      padding: 15px 20px;
+      padding: 12px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: #2a2a2a;
-      border-bottom: 1px solid #3a3a3a;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
     }
-    .video-container {
-      position: relative;
+    .main-editor {
       flex: 1;
       display: flex;
+      flex-direction: column;
+      position: relative;
+      padding: 20px;
+      gap: 20px;
       align-items: center;
       justify-content: center;
       overflow: hidden;
     }
-    video {
-      max-width: 100%;
-      max-height: 100%;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    .video-preview-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      border: 1px solid var(--border);
+    }
+    #player {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transform-origin: center center;
     }
     #purple-cursor {
       position: absolute;
@@ -46,32 +71,198 @@
       display: none;
       will-change: transform;
     }
-    .save-btn {
-      background: #a855f7;
-      color: white;
+    
+    .editor-controls {
+      width: 100%;
+      max-width: 900px;
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .playback-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+    .control-btn {
+      background: none;
       border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
+      color: var(--text);
       cursor: pointer;
-      font-weight: 600;
+      padding: 8px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       transition: background 0.2s;
     }
+    .control-btn:hover {
+      background: var(--border);
+    }
+    .control-btn svg { width: 24px; height: 24px; }
+    .play-btn {
+      background: var(--primary);
+      width: 48px;
+      height: 48px;
+    }
+    .play-btn:hover { background: #9333ea; }
+
+    .timeline-outer {
+      padding: 0 10px;
+    }
+    .timeline-container {
+      position: relative;
+      height: 50px;
+      background: #111;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    #timeline-track {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(168, 85, 247, 0.1);
+    }
+    .trim-region {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: rgba(168, 85, 247, 0.3);
+      border-left: 2px solid var(--primary);
+      border-right: 2px solid var(--primary);
+      pointer-events: none;
+    }
+    .trim-handle {
+      position: absolute;
+      top: 0;
+      width: 15px;
+      height: 100%;
+      background: var(--primary);
+      cursor: ew-resize;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .trim-handle::after {
+      content: '';
+      width: 2px;
+      height: 15px;
+      background: rgba(255,255,255,0.5);
+    }
+    #handle-start { left: 0; }
+    #handle-end { right: 0; }
+    
+    #playhead {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 2px;
+      height: 100%;
+      background: white;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .settings-bar {
+      display: flex;
+      gap: 20px;
+      font-size: 13px;
+      align-items: center;
+      justify-content: center;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+    .setting-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type=range] {
+      accent-color: var(--primary);
+    }
+    .save-btn {
+      transition: opacity 0.2s;
+    }
     .save-btn:hover {
-      background: #9333ea;
+      opacity: 0.9;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <div>Promo Screen Recorder - Replay</div>
-    <button class="save-btn" id="saveBtn">Save to Downloads</button>
+    <div style="font-weight: 600; display: flex; align-items: center; gap: 10px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--primary)"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+        Promo Video Editor
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <button onclick="window.close()" style="background: transparent; border: 1px solid var(--border); color: #ccc; cursor: pointer; padding: 8px 16px; border-radius: 6px;">Discard</button>
+      <button id="saveBtn" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">Export Video</button>
+    </div>
   </div>
-  <div class="video-container" id="container">
-    <video id="player" controls></video>
-    <div id="purple-cursor">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M5.65376 12.3673L15.1533 17.8692C16.5741 18.6918 18.2562 17.3753 17.7812 15.8231L13.8827 3.08381C13.4357 1.62319 11.4116 1.48705 10.761 2.8722L5.27181 14.5458C4.69678 15.7686 5.86561 17.1524 7.15376 16.5161L5.65376 12.3673Z" fill="#a855f7" stroke="white" stroke-width="1.5"/>
-      </svg>
+
+  <div class="main-editor">
+    <div class="video-preview-wrapper" id="container">
+      <video id="player"></video>
+      <div id="purple-cursor">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5.65376 12.3673L15.1533 17.8692C16.5741 18.6918 18.2562 17.3753 17.7812 15.8231L13.8827 3.08381C13.4357 1.62319 11.4116 1.48705 10.761 2.8722L5.27181 14.5458C4.69678 15.7686 5.86561 17.1524 7.15376 16.5161L5.65376 12.3673Z" fill="#a855f7" stroke="white" stroke-width="1.5"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="editor-controls">
+      <div class="playback-buttons">
+        <button class="control-btn" id="skipBackBtn">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+        </button>
+        <button class="control-btn play-btn" id="playPauseBtn">
+          <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="pause-icon" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+        <button class="control-btn" id="skipForwardBtn">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+        </button>
+      </div>
+
+      <div class="timeline-outer">
+        <div class="timeline-container" id="timeline">
+          <div id="timeline-track"></div>
+          <div id="trim-region" class="trim-region"></div>
+          <div id="playhead"></div>
+          <div class="trim-handle" id="handle-start"></div>
+          <div class="trim-handle" id="handle-end"></div>
+        </div>
+      </div>
+
+      <div class="settings-bar">
+        <div class="setting-item">
+          <label>Zoom Level:</label>
+          <input type="range" id="zoomLevelRange" min="1" max="2.5" step="0.1" value="1.5">
+          <span id="zoomLevelVal">1.5x</span>
+        </div>
+        <div class="setting-item">
+          <label>Zoom Speed:</label>
+          <input type="range" id="zoomSpeedRange" min="100" max="800" step="50" value="300">
+          <span id="zoomSpeedVal">300ms</span>
+        </div>
+        <div class="setting-item">
+          <input type="checkbox" id="autoZoomCheck" checked>
+          <label for="autoZoomCheck">Auto-zoom on Click</label>
+        </div>
+      </div>
     </div>
   </div>
 

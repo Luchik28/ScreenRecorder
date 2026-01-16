@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, screen, session, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, screen, session, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const FFmpegRecorder = require('./ffmpeg-recorder');
 const { getWindows, maximizeWindow, getWindowRect } = require('./window-utils');
 
@@ -10,7 +11,16 @@ let mainWindow;
 
 // Register custom protocol for local media
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'media', privileges: { bypassCSP: true, stream: true } }
+  { 
+    scheme: 'media', 
+    privileges: { 
+      bypassCSP: true, 
+      stream: true, 
+      secure: true, 
+      supportFetchAPI: true, 
+      corsEnabled: true 
+    } 
+  }
 ]);
 
 function createMainWindow() {
@@ -34,6 +44,10 @@ function createMainWindow() {
     }
   });
 
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
   mainWindow.loadFile('index.html');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
@@ -41,20 +55,43 @@ function createMainWindow() {
   // Prevent toolbar from appearing in any screen recording
   mainWindow.setContentProtection(true);
   
-    // Ensure it doesn't minimize when losing focus
-    mainWindow.on('blur', () => {
+  // Ensure it doesn't minimize when losing focus
+  mainWindow.on('blur', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-    });
+    }
+  });
 }
 
+// Global reference for the preview window to prevent garbage collection
+let previewWindow;
+
 app.whenReady().then(() => {
-  // Handle local media loading
-  protocol.registerFileProtocol('media', (request, callback) => {
-    const url = request.url.replace('media:///', '');
+  // Simple and highly compatible protocol handler
+  protocol.handle('media', async (request) => {
     try {
-      return callback({ path: path.normalize(decodeURIComponent(url)) });
+      // Extract path: media://C:/Users/... -> C:/Users/...
+      const url = new URL(request.url);
+      let p = decodeURIComponent(url.pathname);
+      
+      // On Windows, if pathname starts with /C:/, strip the leading /
+      if (process.platform === 'win32' && p.startsWith('/') && p.includes(':')) {
+        p = p.substring(1);
+      }
+      
+      const absolutePath = path.resolve(p);
+
+      if (!fs.existsSync(absolutePath)) {
+        console.error(`[Media Protocol] Not found: ${absolutePath}`);
+        return new Response('Not found', { status: 404 });
+      }
+
+      // Using pathToFileURL ensures the file path is correctly encoded for net.fetch
+      const fileUrl = pathToFileURL(absolutePath).toString();
+      return net.fetch(fileUrl);
     } catch (error) {
-      console.error('Failed to register protocol', error);
+      console.error('[Media Protocol] Error:', error);
+      return new Response('Error', { status: 500 });
     }
   });
 
@@ -69,7 +106,10 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit();
+    // Check if we have any other windows (like the editor) before quitting
+    if (BrowserWindow.getAllWindows().length === 0) {
+      app.quit();
+    }
   }
 });
 
@@ -198,15 +238,31 @@ ipcMain.handle('maximize-target-window', async (event, handle) => {
   }
   return result;
 });
-// Save video to downloads
-ipcMain.on('save-video-to-downloads', (event, videoPath) => {
+// Save video to downloads (with optional trimming)
+ipcMain.on('save-video-to-downloads', async (event, videoPath, trimInfo) => {
   const { shell } = require('electron');
   const downloadsPath = path.join(require('os').homedir(), 'Downloads');
-  const fileName = path.basename(videoPath);
+  const fileName = `promo-${Date.now()}.mp4`;
   const destPath = path.join(downloadsPath, fileName);
   
-  fs.copyFileSync(videoPath, destPath);
-  shell.showItemInFolder(destPath);
+  try {
+    if (trimInfo && (trimInfo.start > 0 || trimInfo.duration)) {
+      console.log('Trimming video:', trimInfo);
+      const tempRecorder = new FFmpegRecorder();
+      await FFmpegRecorder.trimVideo(
+        videoPath, 
+        destPath, 
+        trimInfo.start, 
+        trimInfo.duration,
+        tempRecorder.ffmpegPath
+      );
+    } else {
+      fs.copyFileSync(videoPath, destPath);
+    }
+    shell.showItemInFolder(destPath);
+  } catch (err) {
+    console.error('Failed to save/trim video:', err);
+  }
 });
 // Start FFmpeg recording (Step 1: Video only)
 ipcMain.handle('start-recording', async (event, options) => {
@@ -256,13 +312,9 @@ ipcMain.handle('stop-recording', async () => {
 
       console.log('Recording saved:', result.videoPath);
       
-      // Close toolbar window
-      if (mainWindow) {
-        mainWindow.close();
-        mainWindow = null;
-      }
+      const query = `video=${encodeURIComponent(result.videoPath)}&mouse=${encodeURIComponent(mouseDataPath || '')}`;
       
-      const previewWindow = new BrowserWindow({
+      previewWindow = new BrowserWindow({
         width: 1280,
         height: 800,
         backgroundColor: '#1a1a1a',
@@ -270,12 +322,26 @@ ipcMain.handle('stop-recording', async () => {
         webPreferences: {
           nodeIntegration: true,
           contextIsolation: false,
-          webSecurity: false // Allow loading local files for the preview
+          webSecurity: false,
+          devTools: true
         }
       });
       
-      const query = `video=${encodeURIComponent(result.videoPath)}&mouse=${encodeURIComponent(mouseDataPath || '')}`;
       previewWindow.loadFile('recording.html', { search: query });
+      previewWindow.maximize();
+
+      // Open dev tools for debugging
+      previewWindow.webContents.openDevTools();
+
+      previewWindow.on('closed', () => {
+        previewWindow = null;
+      });
+
+      // Close toolbar window after preview opens to stay alive
+      if (mainWindow) {
+        mainWindow.close();
+        mainWindow = null;
+      }
       
       return {
         success: true,

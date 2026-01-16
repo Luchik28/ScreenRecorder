@@ -134,15 +134,68 @@ class FFmpegRecorder {
     const { screen } = require('electron');
     this.mousePositions = [];
     const startTime = Date.now();
+
+    // Simple click detection using PowerShell GetAsyncKeyState without Add-Type
+    // We'll use a direct command that polls the mouse state
+    const clickCommand = `
+$signature = '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);';
+$type = Add-Type -MemberDefinition $signature -Name User32 -Namespace Win32 -PassThru;
+$wasPressed = $false;
+while($true) {
+  $state = $type::GetAsyncKeyState(1);
+  $isPressed = $state -lt 0;
+  if($isPressed -and -not $wasPressed) { Write-Output 'CLICK' };
+  $wasPressed = $isPressed;
+  Start-Sleep -Milliseconds 15;
+}
+`;
+
+    this.clickDetector = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', clickCommand],
+      { windowsHide: true }
+    );
+    let clickPending = false;
+    this.clickDetector.stdout.setEncoding('utf8');
+    let clickBuf = '';
+    this.clickDetector.stdout.on('data', (data) => {
+      clickBuf += data;
+      let idx;
+      while ((idx = clickBuf.indexOf('\n')) !== -1) {
+        const line = clickBuf.slice(0, idx).trim();
+        clickBuf = clickBuf.slice(idx + 1);
+        if (line === 'CLICK') {
+          clickPending = true;
+
+          // Debug signal (prints occasionally so we can confirm clicks are flowing)
+          this._clickCount = (this._clickCount || 0) + 1;
+          console.log('Click recorded! Total:', this._clickCount);
+        }
+      }
+    });
+
+    this.clickDetector.stderr.on('data', (data) => {
+      // If the script fails to compile Add-Type or otherwise errors, this will tell us.
+      console.error('Click detector stderr:', data.toString());
+    });
+
+    this.clickDetector.on('exit', (code) => {
+      console.error('Click detector exited with code:', code);
+    });
     
     // Increased frequency for super smooth playback (125 samples per second)
     this.mouseTrackingInterval = setInterval(() => {
       const point = screen.getCursorScreenPoint();
       const timestamp = Date.now() - startTime;
+      
+      const hasClick = clickPending;
+      clickPending = false; // Reset for next poll
+      
       this.mousePositions.push({
         x: point.x,
         y: point.y,
-        time: timestamp
+        time: timestamp,
+        click: hasClick
       });
     }, 8); 
   }
@@ -153,6 +206,11 @@ class FFmpegRecorder {
       if (this.mouseTrackingInterval) {
         clearInterval(this.mouseTrackingInterval);
         this.mouseTrackingInterval = null;
+      }
+
+      if (this.clickDetector) {
+        this.clickDetector.kill();
+        this.clickDetector = null;
       }
 
       if (!this.process) {
@@ -187,6 +245,27 @@ class FFmpegRecorder {
     }, null, 2));
     
     return dataPath;
+  }
+
+  // Trim video using FFmpeg
+  static async trimVideo(inputPath, outputPath, startTime, duration, ffmpegPath) {
+    const { spawn } = require('child_process');
+    return new Promise((resolve, reject) => {
+      const args = [
+        '-ss', startTime.toString(),
+        '-t', duration.toString(),
+        '-i', inputPath,
+        '-c', 'copy', // Copy codec for instant trimming
+        '-y',
+        outputPath
+      ];
+      
+      const process = spawn(ffmpegPath || 'ffmpeg', args);
+      process.on('close', (code) => {
+        if (code === 0) resolve(outputPath);
+        else reject(new Error(`FFmpeg trim failed with code ${code}`));
+      });
+    });
   }
 }
 

@@ -309,12 +309,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
-}
   text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
 }
 
 
