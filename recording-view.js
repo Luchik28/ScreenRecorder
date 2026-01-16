@@ -293,33 +293,33 @@ function updateLoop() {
     
         cursor.style.transform = `translate(${targetX}px, ${targetY}px)`;
         cursor.style.display = 'block';
-    }
 
-    // Zoom Logic
-    if (autoZoomEnabled && !videoElement.paused) {
-        // Check if there was a click recently or if we are currently over one
-        // We look back a bit to catch the start of the click event
-        if (pos.click && !isZooming) {
-            isZooming = true;
+        // Zoom Logic - only when we have a valid position
+        if (autoZoomEnabled && !videoElement.paused) {
+            // Check if there was a click recently or if we are currently over one
+            // We look back a bit to catch the start of the click event
+            if (pos.click && !isZooming) {
+                isZooming = true;
+                
+                // Calculate center offset for zoom based on rendered rect
+                const videoRect = videoElement.getBoundingClientRect();
+                const recordedWidth = videoElement.videoWidth;
+                const recordedHeight = videoElement.videoHeight;
+
+                const normX = (pos.x / recordedWidth) - 0.5;
+                const normY = (pos.y / recordedHeight) - 0.5;
             
-            // Calculate center offset for zoom based on rendered rect
-            const videoRect = videoElement.getBoundingClientRect();
-            const recordedWidth = videoElement.videoWidth;
-            const recordedHeight = videoElement.videoHeight;
+                // Move the video in the opposite direction of the mouse offset
+                const moveX = -normX * 100 * zoomLevel; 
+                const moveY = -normY * 100 * zoomLevel;
 
-            const normX = (pos.x / recordedWidth) - 0.5;
-            const normY = (pos.y / recordedHeight) - 0.5;
-        
-            // Move the video in the opposite direction of the mouse offset
-            const moveX = -normX * 100 * zoomLevel; 
-            const moveY = -normY * 100 * zoomLevel;
-
-            videoElement.style.transform = `scale(${zoomLevel}) translate(${moveX}%, ${moveY}%)`;
-            
-            setTimeout(() => {
-                videoElement.style.transform = 'scale(1) translate(0, 0)';
-                setTimeout(() => { isZooming = false; }, zoomDuration);
-            }, 1000); // Hold zoom for 1 second
+                videoElement.style.transform = `scale(${zoomLevel}) translate(${moveX}%, ${moveY}%)`;
+                
+                setTimeout(() => {
+                    videoElement.style.transform = 'scale(1) translate(0, 0)';
+                    setTimeout(() => { isZooming = false; }, zoomDuration);
+                }, 1000); // Hold zoom for 1 second
+            }
         }
     }
     
