@@ -9,7 +9,10 @@ class VideoExporter {
     }
 
     async exportWithEffects(options, progressCallback) {
-        const { videoPath, outputPath, mouseData, trimStart, trimDuration, zoomLevel, zoomDuration, autoZoomEnabled } = options;
+        const { videoPath, outputPath, mouseData, trimStart, trimDuration, zoomEvents, cursorSettings, autoZoomEnabled } = options;
+        
+        // Store cursor settings for drawing
+        this.cursorSettings = cursorSettings || { style: 'windows', color: '#a855f7', size: 24 };
         
         const tempFramesDir = path.join(path.dirname(outputPath), `temp_frames_${Date.now()}`);
         fs.mkdirSync(tempFramesDir, { recursive: true });
@@ -27,10 +30,10 @@ class VideoExporter {
                 .filter(f => f.endsWith('.png'))
                 .sort();
             
-            // Pre-calculate zoom events from mouse data for the trimmed portion
-            const zoomEvents = this.calculateZoomEvents(mouseData, trimStart * 1000, zoomDuration, 1000);
+            // Use provided zoom events (already calculated by UI), adjust times for trim
+            const adjustedZoomEvents = this.adjustZoomEventsForTrim(zoomEvents || [], trimStart * 1000);
             
-            await this.processFrames(frames, tempFramesDir, mouseData, trimStart * 1000, zoomLevel, zoomDuration, autoZoomEnabled, zoomEvents, progressCallback);
+            await this.processFrames(frames, tempFramesDir, mouseData, trimStart * 1000, autoZoomEnabled, adjustedZoomEvents, progressCallback);
             
             // Step 3: Re-encode video from processed frames
             progressCallback({ stage: 'encoding', progress: 0 });
@@ -70,36 +73,41 @@ class VideoExporter {
 
     // Calculate zoom events (when clicks happen) for the entire video
     // Only creates one zoom event per click, prevents overlapping zooms
-    calculateZoomEvents(mouseData, trimStartMs, zoomDuration, holdDuration) {
-        const events = [];
+    adjustZoomEventsForTrim(zoomEvents, trimStartMs) {
+        const adjusted = [];
         let lastEventEndTime = -Infinity;
         
-        for (let i = 0; i < mouseData.length; i++) {
-            if (mouseData[i].click) {
-                const clickTime = mouseData[i].time - trimStartMs;
-                const eventEndTime = clickTime + zoomDuration + holdDuration + zoomDuration;
-                
-                // Only add event if it starts after the last one ends (no overlap)
-                // and is within the trimmed video range
-                if (clickTime >= 0 && clickTime > lastEventEndTime) {
-                    events.push({
-                        startTime: clickTime,
-                        x: mouseData[i].x,
-                        y: mouseData[i].y,
-                        zoomInEnd: clickTime + zoomDuration,
-                        holdEnd: clickTime + zoomDuration + holdDuration,
-                        zoomOutEnd: eventEndTime
-                    });
-                    lastEventEndTime = eventEndTime;
-                }
+        for (const event of zoomEvents) {
+            if (!event.enabled) continue;
+            
+            const startTime = event.time - trimStartMs;
+            const zoomInEnd = startTime + event.zoomSpeed;
+            const holdEnd = zoomInEnd + event.holdDuration;
+            const zoomOutEnd = holdEnd + event.zoomSpeed;
+            
+            // Only add event if it starts after the last one ends (no overlap)
+            // and is within the trimmed video range
+            if (startTime >= 0 && startTime > lastEventEndTime) {
+                adjusted.push({
+                    startTime: startTime,
+                    x: event.x,
+                    y: event.y,
+                    zoomLevel: event.zoomLevel,
+                    zoomSpeed: event.zoomSpeed,
+                    holdDuration: event.holdDuration,
+                    zoomInEnd: zoomInEnd,
+                    holdEnd: holdEnd,
+                    zoomOutEnd: zoomOutEnd
+                });
+                lastEventEndTime = zoomOutEnd;
             }
         }
-        console.log(`Created ${events.length} zoom events`);
-        return events;
+        console.log(`Using ${adjusted.length} zoom events for export`);
+        return adjusted;
     }
 
     // Calculate current zoom state for a given frame time
-    calculateZoomState(frameTime, zoomEvents, zoomLevel, zoomDuration) {
+    calculateZoomState(frameTime, zoomEvents) {
         for (const event of zoomEvents) {
             if (frameTime >= event.startTime && frameTime <= event.zoomOutEnd) {
                 let scale = 1;
@@ -108,17 +116,17 @@ class VideoExporter {
                 
                 if (frameTime < event.zoomInEnd) {
                     // Zooming in
-                    const progress = (frameTime - event.startTime) / zoomDuration;
+                    const progress = (frameTime - event.startTime) / event.zoomSpeed;
                     const eased = this.easeInOutCubic(progress);
-                    scale = 1 + (zoomLevel - 1) * eased;
+                    scale = 1 + (event.zoomLevel - 1) * eased;
                 } else if (frameTime < event.holdEnd) {
                     // Holding zoom
-                    scale = zoomLevel;
+                    scale = event.zoomLevel;
                 } else {
                     // Zooming out
-                    const progress = (frameTime - event.holdEnd) / zoomDuration;
+                    const progress = (frameTime - event.holdEnd) / event.zoomSpeed;
                     const eased = this.easeInOutCubic(progress);
-                    scale = zoomLevel - (zoomLevel - 1) * eased;
+                    scale = event.zoomLevel - (event.zoomLevel - 1) * eased;
                 }
                 
                 return { scale, x, y, active: true };
@@ -132,7 +140,7 @@ class VideoExporter {
         return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     }
 
-    async processFrames(frames, framesDir, mouseData, trimStartMs, zoomLevel, zoomDuration, autoZoomEnabled, zoomEvents, progressCallback) {
+    async processFrames(frames, framesDir, mouseData, trimStartMs, autoZoomEnabled, zoomEvents, progressCallback) {
         const { createCanvas, loadImage } = require('canvas');
         
         for (let i = 0; i < frames.length; i++) {
@@ -152,7 +160,7 @@ class VideoExporter {
                 
                 // Calculate zoom state for this frame
                 const zoomState = autoZoomEnabled ? 
-                    this.calculateZoomState(frameTime, zoomEvents, zoomLevel, zoomDuration) :
+                    this.calculateZoomState(frameTime, zoomEvents) :
                     { scale: 1, active: false };
                 
                 // Draw the frame (with zoom if active)
@@ -277,34 +285,138 @@ class VideoExporter {
     }
 
     drawCursor(ctx, x, y) {
-        // Draw a proper arrow cursor matching the preview
+        const settings = this.cursorSettings || { style: 'windows', color: '#a855f7', size: 24 };
+        const size = settings.size;
+        const color = settings.color;
+        
         ctx.save();
         ctx.translate(x, y);
         
-        // Scale cursor to be visible (24px like in preview)
-        const scale = 1;
-        ctx.scale(scale, scale);
-        
-        // Draw the arrow pointer shape
-        ctx.beginPath();
-        // Arrow pointer path (matches the SVG in recording.html)
-        ctx.moveTo(0, 0);           // Tip of arrow
-        ctx.lineTo(0, 21);          // Down the left side
-        ctx.lineTo(4.5, 17);        // Notch
-        ctx.lineTo(8.5, 24);        // Bottom point of tail
-        ctx.lineTo(11.5, 22);       // Right side of tail
-        ctx.lineTo(7.5, 15);        // Back to notch
-        ctx.lineTo(15, 15);         // Right wing tip
-        ctx.closePath();
-        
-        // Fill with purple
-        ctx.fillStyle = '#a855f7';
-        ctx.fill();
-        
-        // White stroke/outline
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        switch (settings.style) {
+            case 'windows':
+                // Arrow pointer shape
+                const arrowScale = size / 24;
+                ctx.scale(arrowScale, arrowScale);
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, 21);
+                ctx.lineTo(4.5, 17);
+                ctx.lineTo(8.5, 24);
+                ctx.lineTo(11.5, 22);
+                ctx.lineTo(7.5, 15);
+                ctx.lineTo(15, 15);
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                break;
+                
+            case 'mac':
+                // Mac-style arrow
+                const macScale = size / 24;
+                ctx.scale(macScale, macScale);
+                ctx.beginPath();
+                ctx.moveTo(7, 2);
+                ctx.lineTo(17, 12);
+                ctx.lineTo(12, 12);
+                ctx.lineTo(15, 22);
+                ctx.lineTo(5, 12);
+                ctx.lineTo(10, 12);
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                break;
+                
+            case 'dot':
+                // Filled circle
+                ctx.beginPath();
+                ctx.arc(size/2, size/2, size/2 - 2, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                break;
+                
+            case 'ring':
+                // Ring/circle outline
+                ctx.beginPath();
+                ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                // Inner white stroke
+                ctx.beginPath();
+                ctx.arc(size/2, size/2, size/2 - 3, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                break;
+                
+            case 'square':
+                // Rounded square
+                const borderRadius = 3;
+                ctx.beginPath();
+                ctx.roundRect(1, 1, size - 2, size - 2, borderRadius);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                break;
+                
+            case 'crosshair':
+                // Crosshair
+                const half = size / 2;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                // Vertical line
+                ctx.beginPath();
+                ctx.moveTo(half, 0);
+                ctx.lineTo(half, size);
+                ctx.stroke();
+                // Horizontal line
+                ctx.beginPath();
+                ctx.moveTo(0, half);
+                ctx.lineTo(size, half);
+                ctx.stroke();
+                // White outline
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(half - 1, 0);
+                ctx.lineTo(half - 1, size);
+                ctx.moveTo(half + 1, 0);
+                ctx.lineTo(half + 1, size);
+                ctx.moveTo(0, half - 1);
+                ctx.lineTo(size, half - 1);
+                ctx.moveTo(0, half + 1);
+                ctx.lineTo(size, half + 1);
+                ctx.stroke();
+                break;
+                
+            default:
+                // Default to windows style
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, 21);
+                ctx.lineTo(4.5, 17);
+                ctx.lineTo(8.5, 24);
+                ctx.lineTo(11.5, 22);
+                ctx.lineTo(7.5, 15);
+                ctx.lineTo(15, 15);
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+        }
         
         ctx.restore();
     }
