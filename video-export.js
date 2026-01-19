@@ -292,43 +292,50 @@ class VideoExporter {
         ctx.save();
         ctx.translate(x, y);
         
+        // Add drop shadow for all cursor types
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 3;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
+        
         switch (settings.style) {
             case 'windows':
-                // Arrow pointer shape
-                const arrowScale = size / 24;
-                ctx.scale(arrowScale, arrowScale);
+                // Windows cursor - classic arrow with proper proportions
+                const winScale = size / 32;
+                ctx.scale(winScale, winScale);
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
-                ctx.lineTo(0, 21);
-                ctx.lineTo(4.5, 17);
-                ctx.lineTo(8.5, 24);
-                ctx.lineTo(11.5, 22);
-                ctx.lineTo(7.5, 15);
-                ctx.lineTo(15, 15);
-                ctx.closePath();
-                ctx.fillStyle = color;
-                ctx.fill();
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-                break;
-                
-            case 'mac':
-                // Mac-style arrow
-                const macScale = size / 24;
-                ctx.scale(macScale, macScale);
-                ctx.beginPath();
-                ctx.moveTo(7, 2);
-                ctx.lineTo(17, 12);
-                ctx.lineTo(12, 12);
-                ctx.lineTo(15, 22);
-                ctx.lineTo(5, 12);
-                ctx.lineTo(10, 12);
+                ctx.lineTo(0, 22);
+                ctx.lineTo(6, 16);
+                ctx.lineTo(10, 25);
+                ctx.lineTo(13, 23.5);
+                ctx.lineTo(9, 14.5);
+                ctx.lineTo(17, 14.5);
                 ctx.closePath();
                 ctx.fillStyle = color;
                 ctx.fill();
                 ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 1;
+                ctx.stroke();
+                break;
+                
+            case 'mac':
+                // Mac cursor - sleeker arrow
+                const macScale = size / 32;
+                ctx.scale(macScale, macScale);
+                ctx.beginPath();
+                ctx.moveTo(2, 0);
+                ctx.lineTo(2, 21);
+                ctx.lineTo(8, 15);
+                ctx.lineTo(11, 26);
+                ctx.lineTo(13, 25);
+                ctx.lineTo(10, 14);
+                ctx.lineTo(16, 14);
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 0.8;
                 ctx.stroke();
                 break;
                 

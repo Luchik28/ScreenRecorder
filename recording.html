@@ -46,6 +46,9 @@
       min-width: 0;
     }
     .video-preview-wrapper {
+      align-self: center;
+    }
+    .video-preview-wrapper {
       position: relative;
       max-width: 100%;
       flex: 1;
@@ -65,7 +68,6 @@
       transform-origin: center center;
       will-change: transform;
     }
-    
     #purple-cursor {
       position: absolute;
       top: 0;
@@ -75,39 +77,6 @@
       display: none;
       will-change: transform;
     }
-    
-    /* Cursor styles */
-    .cursor-windows, .cursor-mac {
-      width: 24px;
-      height: 24px;
-    }
-    .cursor-dot {
-      border-radius: 50%;
-    }
-    .cursor-square {
-      border-radius: 2px;
-    }
-    .cursor-crosshair {
-      position: relative;
-    }
-    .cursor-crosshair::before, .cursor-crosshair::after {
-      content: '';
-      position: absolute;
-      background: currentColor;
-    }
-    .cursor-crosshair::before {
-      width: 2px;
-      height: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-    }
-    .cursor-crosshair::after {
-      height: 2px;
-      width: 100%;
-      top: 50%;
-      transform: translateY(-50%);
-    }
-    
     .editor-controls {
       background: var(--panel);
       border-radius: 12px;
@@ -143,7 +112,6 @@
       height: 48px;
     }
     .play-btn:hover { background: #9333ea; }
-
     .timeline-section {
       display: flex;
       flex-direction: column;
@@ -164,10 +132,7 @@
     }
     #timeline-track {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(168, 85, 247, 0.1);
     }
     .trim-region {
@@ -200,16 +165,13 @@
       z-index: 4;
       pointer-events: none;
     }
-    
-    /* Zoom timeline */
     .zoom-timeline {
       position: relative;
-      height: 28px;
+      height: 32px;
       background: #0a0a0a;
       border-radius: 4px;
       border: 1px solid var(--border);
       cursor: pointer;
-      margin-top: 2px;
     }
     .zoom-marker {
       position: absolute;
@@ -217,14 +179,13 @@
       background: rgba(59, 130, 246, 0.6);
       border: 1px solid #3b82f6;
       border-radius: 3px;
-      cursor: pointer;
-      transition: background 0.2s;
+      cursor: move;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 10px;
       color: white;
-      min-width: 20px;
+      min-width: 30px;
     }
     .zoom-marker:hover { background: rgba(59, 130, 246, 0.8); }
     .zoom-marker.selected {
@@ -232,27 +193,78 @@
       border-color: white;
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
     }
-    
-    /* Settings Panel */
+    .zoom-handle {
+      position: absolute;
+      top: 0;
+      width: 8px;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.3);
+      cursor: ew-resize;
+      z-index: 2;
+    }
+    .zoom-handle:hover { background: rgba(255, 255, 255, 0.5); }
+    .zoom-handle.left { left: 0; border-radius: 3px 0 0 3px; }
+    .zoom-handle.right { right: 0; border-radius: 0 3px 3px 0; }
+
+    /* Settings Panel with Icon Tabs */
     .settings-panel {
       width: 280px;
       background: var(--panel);
       border-radius: 12px;
       border: 1px solid var(--border);
-      padding: 15px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
-      overflow-y: auto;
-      max-height: 100%;
+      overflow: hidden;
     }
+    .tab-buttons {
+      display: flex;
+      padding: 8px;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      background: #1a1a1a;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #888;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      background: rgba(168, 85, 247, 0.1);
+      border-color: #555;
+      color: #aaa;
+    }
+    .tab-btn.active {
+      background: rgba(168, 85, 247, 0.2);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .tab-btn svg { width: 20px; height: 20px; }
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+    }
+    .tab-pane {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .tab-pane.active { display: flex; }
     .settings-section {
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
     .settings-section-title {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       color: #888;
       text-transform: uppercase;
@@ -278,8 +290,6 @@
       color: #666;
       text-align: right;
     }
-    
-    /* Cursor style selector */
     .cursor-options {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -302,13 +312,6 @@
       background: rgba(168, 85, 247, 0.1);
     }
     .cursor-option svg { width: 20px; height: 20px; }
-    .cursor-option-label {
-      font-size: 9px;
-      color: #888;
-      margin-top: 4px;
-    }
-    
-    /* Color picker */
     .color-picker-row {
       display: flex;
       gap: 8px;
@@ -330,44 +333,19 @@
       border-radius: 6px;
       border: 2px dashed #555;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      color: #555;
     }
-    
-    /* Zoom side panel */
-    .zoom-panel {
-      display: none;
-      background: #252525;
-      border-radius: 8px;
-      padding: 12px;
-      margin-top: 10px;
-      border: 1px solid var(--border);
-    }
-    .zoom-panel.visible { display: block; }
-    .zoom-panel-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-    .zoom-panel-title {
+    .details-empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: #666;
       font-size: 13px;
-      font-weight: 600;
-      color: #3b82f6;
     }
-    .zoom-panel-close {
-      background: none;
-      border: none;
-      color: #888;
-      cursor: pointer;
-      font-size: 18px;
-      padding: 0;
-      line-height: 1;
+    .details-empty svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      opacity: 0.3;
     }
-    .zoom-panel-close:hover { color: white; }
     .delete-zoom-btn {
       width: 100%;
       margin-top: 10px;
@@ -380,8 +358,6 @@
       font-size: 12px;
     }
     .delete-zoom-btn:hover { background: rgba(239, 68, 68, 0.3); }
-    
-    /* Export overlay */
     #export-overlay {
       display: none;
       position: absolute;
@@ -393,15 +369,13 @@
       justify-content: center;
       border-radius: 12px;
     }
-    
-    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="header">
     <div style="font-weight: 600; display: flex; align-items: center; gap: 10px;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--primary)"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
-        Promo Video Editor
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--primary)"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+      Promo Video Editor
     </div>
     <div style="display: flex; gap: 10px;">
       <button onclick="window.close()" style="background: transparent; border: 1px solid var(--border); color: #ccc; cursor: pointer; padding: 8px 16px; border-radius: 6px;">Discard</button>
@@ -413,7 +387,6 @@
     <div class="editor-content">
       <div class="video-preview-wrapper" id="container">
         <video id="player"></video>
-        
         <div id="export-overlay">
           <div style="color:white; font-size:20px; font-weight:600; margin-bottom:20px;">Exporting Video with Effects...</div>
           <div id="export-stage" style="color:#a855f7; font-size:14px; margin-bottom:15px;">Preparing...</div>
@@ -422,7 +395,6 @@
           </div>
           <div id="export-percent" style="color:#ccc; font-size:14px; margin-top:10px;">0%</div>
         </div>
-        
         <div id="purple-cursor"></div>
       </div>
 
@@ -439,7 +411,6 @@
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
           </button>
         </div>
-
         <div class="timeline-section">
           <div class="timeline-label">Video</div>
           <div class="timeline-container" id="timeline">
@@ -450,102 +421,122 @@
             <div class="trim-handle" id="handle-end"></div>
           </div>
         </div>
-        
         <div class="timeline-section">
-          <div class="timeline-label">Zoom Effects (click to add)</div>
+          <div class="timeline-label">Zoom Effects (click to add, drag edges to extend)</div>
           <div class="zoom-timeline" id="zoom-timeline"></div>
-        </div>
-        
-        <div class="zoom-panel" id="zoom-panel">
-          <div class="zoom-panel-header">
-            <span class="zoom-panel-title">Zoom Settings</span>
-            <button class="zoom-panel-close" id="zoom-panel-close">&times;</button>
-          </div>
-          <div class="setting-row">
-            <label>Zoom Amount</label>
-            <input type="range" id="selectedZoomLevel" min="1.2" max="3" step="0.1" value="1.5">
-            <span class="setting-value" id="selectedZoomLevelVal">1.5x</span>
-          </div>
-          <div class="setting-row">
-            <label>Zoom Speed</label>
-            <input type="range" id="selectedZoomSpeed" min="100" max="800" step="50" value="300">
-            <span class="setting-value" id="selectedZoomSpeedVal">300ms</span>
-          </div>
-          <div class="setting-row">
-            <label>Hold Duration</label>
-            <input type="range" id="selectedZoomHold" min="200" max="2000" step="100" value="1000">
-            <span class="setting-value" id="selectedZoomHoldVal">1000ms</span>
-          </div>
-          <button class="delete-zoom-btn" id="delete-zoom-btn">Delete This Zoom</button>
         </div>
       </div>
     </div>
-    
+
     <div class="settings-panel">
-      <div class="settings-section">
-        <div class="settings-section-title">Cursor Style</div>
-        <div class="cursor-options">
-          <div class="cursor-option selected" data-cursor="windows" title="Windows">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7,2L17,12L12,12L15,22L5,12L10,12L7,2Z"/></svg>
+      <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="cursor" title="Cursor Settings">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.64 21.97C13.14 22.21 12.54 22 12.31 21.5L10.13 16.76L7.62 18.78C7.45 18.92 7.24 19 7 19C6.45 19 6 18.55 6 18V3C6 2.45 6.45 2 7 2C7.24 2 7.47 2.09 7.64 2.23L7.65 2.22L19.14 11.86C19.57 12.22 19.62 12.85 19.27 13.27C19.1 13.5 18.85 13.65 18.58 13.69L14.73 14.22L16.91 18.96C17.15 19.46 16.94 20.06 16.44 20.3L13.64 21.97Z"/></svg>
+        </button>
+        <button class="tab-btn" data-tab="details" title="Zoom Details">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/><path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/></svg>
+        </button>
+      </div>
+      
+      <div class="tab-content">
+        <div class="tab-pane active" id="cursor-tab">
+          <div class="settings-section">
+            <div class="settings-section-title">Cursor Style</div>
+            <div class="cursor-options">
+              <div class="cursor-option selected" data-cursor="windows" title="Windows">
+                <svg viewBox="0 0 32 32" width="20" height="20" fill="currentColor" style="filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.3));">
+                  <path d="M0.5,0.5 L0.5,22.5 L6.5,16.5 L10,25.5 L13.5,24 L10,15 L17.5,15 L0.5,0.5 Z" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>
+                </svg>
+              </div>
+              <div class="cursor-option" data-cursor="mac" title="Mac">
+                <svg viewBox="0 0 24 32" width="16" height="20" fill="currentColor" style="filter: drop-shadow(0.5px 0.5px 0.5px rgba(0,0,0,0.3));">
+                  <path d="M2,0.5 L2,21.5 L8,15.5 L11,26.5 L13,25.5 L10,14.5 L16,14.5 L2,0.5 Z" stroke="rgba(255,255,255,0.3)" stroke-width="0.6"/>
+                </svg>
+              </div>
+              <div class="cursor-option" data-cursor="dot" title="Dot">
+                <div style="width:12px; height:12px; background:currentColor; border-radius:50%;"></div>
+              </div>
+              <div class="cursor-option" data-cursor="ring" title="Ring">
+                <div style="width:14px; height:14px; border:2px solid currentColor; border-radius:50%;"></div>
+              </div>
+              <div class="cursor-option" data-cursor="square" title="Square">
+                <div style="width:10px; height:10px; background:currentColor; border-radius:2px;"></div>
+              </div>
+              <div class="cursor-option" data-cursor="crosshair" title="Crosshair">
+                <div style="position:relative; width:16px; height:16px;">
+                  <div style="position:absolute; width:2px; height:100%; left:50%; transform:translateX(-50%); background:currentColor;"></div>
+                  <div style="position:absolute; height:2px; width:100%; top:50%; transform:translateY(-50%); background:currentColor;"></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="cursor-option" data-cursor="mac" title="Mac">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,4L11,4L11,11L4,11L4,4M4,20L4,13L11,13L11,20L4,20M20,4L20,11L13,11L13,4L20,4M13,20L13,13L20,13L20,20L13,20"/></svg>
+          <div class="settings-section">
+            <div class="settings-section-title">Cursor Color</div>
+            <div class="color-picker-row">
+              <div class="color-swatch selected" data-color="#a855f7" style="background:#a855f7;"></div>
+              <div class="color-swatch" data-color="#3b82f6" style="background:#3b82f6;"></div>
+              <div class="color-swatch" data-color="#22c55e" style="background:#22c55e;"></div>
+              <div class="color-swatch" data-color="#eab308" style="background:#eab308;"></div>
+              <div class="color-swatch" data-color="#ef4444" style="background:#ef4444;"></div>
+              <div class="color-swatch" data-color="#ffffff" style="background:#ffffff;"></div>
+              <div class="color-swatch" data-color="#000000" style="background:#000000; border:1px solid #555;"></div>
+              <input type="color" id="custom-color" class="color-custom" value="#a855f7" title="Custom color">
+            </div>
           </div>
-          <div class="cursor-option" data-cursor="dot" title="Dot">
-            <div style="width:12px; height:12px; background:currentColor; border-radius:50%;"></div>
+          <div class="settings-section">
+            <div class="settings-section-title">Cursor Size</div>
+            <div class="setting-row">
+              <input type="range" id="cursorSize" min="16" max="64" step="2" value="24">
+              <span class="setting-value" id="cursorSizeVal">24px</span>
+            </div>
           </div>
-          <div class="cursor-option" data-cursor="ring" title="Ring">
-            <div style="width:14px; height:14px; border:2px solid currentColor; border-radius:50%;"></div>
-          </div>
-          <div class="cursor-option" data-cursor="square" title="Square">
-            <div style="width:10px; height:10px; background:currentColor; border-radius:2px;"></div>
-          </div>
-          <div class="cursor-option" data-cursor="crosshair" title="Crosshair">
-            <div style="position:relative; width:16px; height:16px;">
-              <div style="position:absolute; width:2px; height:100%; left:50%; transform:translateX(-50%); background:currentColor;"></div>
-              <div style="position:absolute; height:2px; width:100%; top:50%; transform:translateY(-50%); background:currentColor;"></div>
+          <div class="settings-section">
+            <div class="settings-section-title">Default Zoom</div>
+            <div class="setting-row">
+              <label>Zoom Level</label>
+              <input type="range" id="defaultZoomLevel" min="1.2" max="3" step="0.1" value="1.5">
+              <span class="setting-value" id="defaultZoomLevelVal">1.5x</span>
+            </div>
+            <div class="setting-row">
+              <label>Zoom Speed</label>
+              <input type="range" id="defaultZoomSpeed" min="100" max="800" step="50" value="300">
+              <span class="setting-value" id="defaultZoomSpeedVal">300ms</span>
+            </div>
+            <div class="setting-row" style="flex-direction:row; align-items:center; gap:8px;">
+              <input type="checkbox" id="autoZoomCheck" checked>
+              <label for="autoZoomCheck" style="margin:0;">Auto-zoom on clicks</label>
             </div>
           </div>
         </div>
-      </div>
-      
-      <div class="settings-section">
-        <div class="settings-section-title">Cursor Color</div>
-        <div class="color-picker-row">
-          <div class="color-swatch selected" data-color="#a855f7" style="background:#a855f7;"></div>
-          <div class="color-swatch" data-color="#3b82f6" style="background:#3b82f6;"></div>
-          <div class="color-swatch" data-color="#22c55e" style="background:#22c55e;"></div>
-          <div class="color-swatch" data-color="#eab308" style="background:#eab308;"></div>
-          <div class="color-swatch" data-color="#ef4444" style="background:#ef4444;"></div>
-          <div class="color-swatch" data-color="#ffffff" style="background:#ffffff;"></div>
-          <div class="color-swatch" data-color="#000000" style="background:#000000; border:1px solid #555;"></div>
-          <input type="color" id="custom-color" class="color-custom" value="#a855f7" title="Custom color">
-        </div>
-      </div>
-      
-      <div class="settings-section">
-        <div class="settings-section-title">Cursor Size</div>
-        <div class="setting-row">
-          <input type="range" id="cursorSize" min="16" max="64" step="2" value="24">
-          <span class="setting-value" id="cursorSizeVal">24px</span>
-        </div>
-      </div>
-      
-      <div class="settings-section">
-        <div class="settings-section-title">Default Zoom Settings</div>
-        <div class="setting-row">
-          <label>Default Zoom Level</label>
-          <input type="range" id="defaultZoomLevel" min="1.2" max="3" step="0.1" value="1.5">
-          <span class="setting-value" id="defaultZoomLevelVal">1.5x</span>
-        </div>
-        <div class="setting-row">
-          <label>Default Zoom Speed</label>
-          <input type="range" id="defaultZoomSpeed" min="100" max="800" step="50" value="300">
-          <span class="setting-value" id="defaultZoomSpeedVal">300ms</span>
-        </div>
-        <div class="setting-row" style="flex-direction:row; align-items:center; gap:8px;">
-          <input type="checkbox" id="autoZoomCheck" checked>
-          <label for="autoZoomCheck" style="margin:0;">Auto-zoom on clicks</label>
+
+        <div class="tab-pane" id="details-tab">
+          <div class="details-empty" id="details-empty">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            </svg>
+            <div>Click a zoom on the timeline to edit it</div>
+          </div>
+          <div id="zoom-details" style="display:none;">
+            <div class="settings-section">
+              <div class="settings-section-title">Selected Zoom</div>
+              <div class="setting-row">
+                <label>Zoom Amount</label>
+                <input type="range" id="selectedZoomLevel" min="1.2" max="3" step="0.1" value="1.5">
+                <span class="setting-value" id="selectedZoomLevelVal">1.5x</span>
+              </div>
+              <div class="setting-row">
+                <label>Zoom Speed</label>
+                <input type="range" id="selectedZoomSpeed" min="100" max="800" step="50" value="300">
+                <span class="setting-value" id="selectedZoomSpeedVal">300ms</span>
+              </div>
+              <div class="setting-row">
+                <label>Hold Duration</label>
+                <input type="range" id="selectedZoomHold" min="200" max="5000" step="100" value="1000">
+                <span class="setting-value" id="selectedZoomHoldVal">1000ms</span>
+              </div>
+              <button class="delete-zoom-btn" id="delete-zoom-btn">Delete This Zoom</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

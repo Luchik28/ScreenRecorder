@@ -14,7 +14,7 @@ let isDragging = null;
 
 // Cursor settings
 let cursorSettings = {
-    style: 'windows',  // windows, mac, dot, ring, square, crosshair
+    style: 'windows',
     color: '#a855f7',
     size: 24
 };
@@ -28,6 +28,7 @@ let autoZoomEnabled = true;
 // Per-click zoom events array
 let zoomEvents = [];
 let selectedZoomIndex = -1;
+let isDraggingZoom = null; // { index, type: 'left'|'right' }
 
 // Current zoom animation state
 let currentZoomState = {
@@ -70,7 +71,6 @@ window.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('play-icon').style.display = 'none';
             document.getElementById('pause-icon').style.display = 'block';
             
-            // Initialize zoom timeline after video loads
             renderZoomTimeline();
         });
 
@@ -84,7 +84,6 @@ window.addEventListener('DOMContentLoaded', async () => {
             const data = JSON.parse(fs.readFileSync(mouseDataPath, 'utf8'));
             mousePositions = data.positions;
             
-            // Extract click events as zoom events
             initializeZoomEvents();
             
             cursor.style.display = 'block';
@@ -96,13 +95,13 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     setupPlaybackControls();
     setupTimeline();
+    setupTabs();
     setupCursorSettings();
     setupZoomSettings();
     setupZoomTimeline();
     requestAnimationFrame(updateLoop);
 });
 
-// Initialize zoom events from recorded clicks
 function initializeZoomEvents() {
     zoomEvents = [];
     for (let i = 0; i < mousePositions.length; i++) {
@@ -119,6 +118,20 @@ function initializeZoomEvents() {
         }
     }
     console.log(`Found ${zoomEvents.length} click events`);
+}
+
+function setupTabs() {
+    document.querySelectorAll('.tab-btn').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            
+            document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            
+            tab.classList.add('active');
+            document.getElementById(tabName + '-tab').classList.add('active');
+        });
+    });
 }
 
 function setupPlaybackControls() {
@@ -207,7 +220,6 @@ function setupTimeline() {
 }
 
 function setupCursorSettings() {
-    // Cursor style options
     document.querySelectorAll('.cursor-option').forEach(option => {
         option.addEventListener('click', () => {
             document.querySelectorAll('.cursor-option').forEach(o => o.classList.remove('selected'));
@@ -217,7 +229,6 @@ function setupCursorSettings() {
         });
     });
     
-    // Color swatches
     document.querySelectorAll('.color-swatch').forEach(swatch => {
         swatch.addEventListener('click', () => {
             document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
@@ -228,14 +239,12 @@ function setupCursorSettings() {
         });
     });
     
-    // Custom color picker
     document.getElementById('custom-color').addEventListener('input', (e) => {
         cursorSettings.color = e.target.value;
         document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
         updateCursorAppearance();
     });
     
-    // Cursor size
     document.getElementById('cursorSize').addEventListener('input', (e) => {
         cursorSettings.size = parseInt(e.target.value);
         document.getElementById('cursorSizeVal').textContent = cursorSettings.size + 'px';
@@ -253,23 +262,25 @@ function updateCursorAppearance() {
     
     switch (cursorSettings.style) {
         case 'windows':
-            cursor.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none">
-                <path d="M5.65376 12.3673L15.1533 17.8692C16.5741 18.6918 18.2562 17.3753 17.7812 15.8231L13.8827 3.08381C13.4357 1.62319 11.4116 1.48705 10.761 2.8722L5.27181 14.5458C4.69678 15.7686 5.86561 17.1524 7.15376 16.5161L5.65376 12.3673Z" fill="${color}" stroke="white" stroke-width="1.5"/>
+            // Use actual Windows cursor appearance with color tint
+            cursor.innerHTML = `<svg viewBox="0 0 32 32" width="${size}" height="${size}" style="filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.5));">
+                <path d="M0.5,0.5 L0.5,22.5 L6.5,16.5 L10,25.5 L13.5,24 L10,15 L17.5,15 L0.5,0.5 Z" fill="${color}" stroke="white" stroke-width="1"/>
             </svg>`;
             break;
         case 'mac':
-            cursor.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="${color}">
-                <path d="M7,2L17,12L12,12L15,22L5,12L10,12L7,2Z" stroke="white" stroke-width="1"/>
+            // Use actual Mac cursor appearance with color tint
+            cursor.innerHTML = `<svg viewBox="0 0 24 32" width="${size*0.75}" height="${size}" style="filter: drop-shadow(0.5px 0.5px 0.5px rgba(0,0,0,0.5));">
+                <path d="M2,0.5 L2,21.5 L8,15.5 L11,26.5 L13,25.5 L10,14.5 L16,14.5 L2,0.5 Z" fill="${color}" stroke="white" stroke-width="0.8"/>
             </svg>`;
             break;
         case 'dot':
-            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:50%; border:2px solid white; box-sizing:border-box;"></div>`;
+            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:50%; border:2px solid white; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
             break;
         case 'ring':
-            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; border:3px solid ${color}; border-radius:50%; box-sizing:border-box; box-shadow: 0 0 0 1px white inset, 0 0 0 1px white;"></div>`;
+            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; border:3px solid ${color}; border-radius:50%; box-sizing:border-box; box-shadow: 0 0 0 1px white inset, 0 0 0 1px white, 0 2px 4px rgba(0,0,0,0.3);"></div>`;
             break;
         case 'square':
-            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:3px; border:2px solid white; box-sizing:border-box;"></div>`;
+            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:3px; border:2px solid white; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
             break;
         case 'crosshair':
             const half = size / 2;
@@ -282,7 +293,6 @@ function updateCursorAppearance() {
 }
 
 function setupZoomSettings() {
-    // Default zoom settings
     const defaultLevelRange = document.getElementById('defaultZoomLevel');
     const defaultSpeedRange = document.getElementById('defaultZoomSpeed');
     const autoCheck = document.getElementById('autoZoomCheck');
@@ -311,11 +321,9 @@ function setupZoomSettings() {
         });
     }
     
-    // Selected zoom settings (in panel)
     const selectedZoomLevel = document.getElementById('selectedZoomLevel');
     const selectedZoomSpeed = document.getElementById('selectedZoomSpeed');
     const selectedZoomHold = document.getElementById('selectedZoomHold');
-    const zoomPanelClose = document.getElementById('zoom-panel-close');
     const deleteZoomBtn = document.getElementById('delete-zoom-btn');
     
     if (selectedZoomLevel) {
@@ -324,6 +332,7 @@ function setupZoomSettings() {
             document.getElementById('selectedZoomLevelVal').textContent = val + 'x';
             if (selectedZoomIndex >= 0 && zoomEvents[selectedZoomIndex]) {
                 zoomEvents[selectedZoomIndex].zoomLevel = val;
+                renderZoomTimeline();
             }
         });
     }
@@ -334,6 +343,7 @@ function setupZoomSettings() {
             document.getElementById('selectedZoomSpeedVal').textContent = val + 'ms';
             if (selectedZoomIndex >= 0 && zoomEvents[selectedZoomIndex]) {
                 zoomEvents[selectedZoomIndex].zoomSpeed = val;
+                renderZoomTimeline();
             }
         });
     }
@@ -344,26 +354,17 @@ function setupZoomSettings() {
             document.getElementById('selectedZoomHoldVal').textContent = val + 'ms';
             if (selectedZoomIndex >= 0 && zoomEvents[selectedZoomIndex]) {
                 zoomEvents[selectedZoomIndex].holdDuration = val;
+                renderZoomTimeline();
             }
         });
     }
     
-    // Close zoom panel
-    if (zoomPanelClose) {
-        zoomPanelClose.addEventListener('click', () => {
-            document.getElementById('zoom-panel').classList.remove('visible');
-            selectedZoomIndex = -1;
-            renderZoomTimeline();
-        });
-    }
-    
-    // Delete zoom
     if (deleteZoomBtn) {
         deleteZoomBtn.addEventListener('click', () => {
             if (selectedZoomIndex >= 0) {
                 zoomEvents.splice(selectedZoomIndex, 1);
                 selectedZoomIndex = -1;
-                document.getElementById('zoom-panel').classList.remove('visible');
+                hideZoomDetails();
                 renderZoomTimeline();
             }
         });
@@ -374,20 +375,16 @@ function setupZoomTimeline() {
     const zoomTimeline = document.getElementById('zoom-timeline');
     if (!zoomTimeline) return;
     
-    // Click to add new zoom
     zoomTimeline.addEventListener('click', (e) => {
-        if (e.target === zoomTimeline) {
+        if (e.target === zoomTimeline && !isDraggingZoom) {
             const rect = zoomTimeline.getBoundingClientRect();
             const clickPos = (e.clientX - rect.left) / rect.width;
             
-            // Convert to time in ms
             const duration = mousePositions.length > 0 ? mousePositions[mousePositions.length - 1].time : 0;
             const clickTime = clickPos * duration;
             
-            // Find nearest mouse position for x,y
             const nearestPos = findMousePositionInterpolated(clickTime);
             
-            // Add new zoom event
             zoomEvents.push({
                 time: clickTime,
                 x: nearestPos ? nearestPos.x : 0,
@@ -398,11 +395,68 @@ function setupZoomTimeline() {
                 enabled: true
             });
             
-            // Sort by time
             zoomEvents.sort((a, b) => a.time - b.time);
             renderZoomTimeline();
         }
     });
+    
+    document.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('zoom-handle')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const marker = e.target.parentElement;
+            const index = parseInt(marker.dataset.index);
+            const type = e.target.classList.contains('left') ? 'left' : 'right';
+            
+            isDraggingZoom = { index, type };
+            document.addEventListener('mousemove', handleZoomDrag);
+            document.addEventListener('mouseup', handleZoomDragEnd);
+        } else if (e.target.classList.contains('zoom-marker') && !e.target.classList.contains('zoom-handle')) {
+            const index = parseInt(e.target.dataset.index);
+            selectZoomEvent(index);
+        }
+    });
+}
+
+function handleZoomDrag(e) {
+    if (!isDraggingZoom) return;
+    
+    const zoomTimeline = document.getElementById('zoom-timeline');
+    const rect = zoomTimeline.getBoundingClientRect();
+    const mousePos = (e.clientX - rect.left) / rect.width;
+    const duration = mousePositions.length > 0 ? mousePositions[mousePositions.length - 1].time : 1;
+    const mouseTime = mousePos * duration;
+    
+    const event = zoomEvents[isDraggingZoom.index];
+    const minHold = 100;
+    
+    if (isDraggingZoom.type === 'left') {
+        const maxStart = event.time + event.holdDuration - minHold;
+        const newStart = Math.max(0, Math.min(mouseTime, maxStart));
+        const deltaTime = newStart - event.time;
+        
+        event.time = newStart;
+        event.holdDuration = Math.max(minHold, event.holdDuration - deltaTime);
+    } else if (isDraggingZoom.type === 'right') {
+        const eventStart = event.time;
+        const currentEnd = eventStart + event.zoomSpeed * 2 + event.holdDuration;
+        const newEnd = Math.max(eventStart + event.zoomSpeed * 2 + minHold, Math.min(mouseTime, duration));
+        
+        event.holdDuration = Math.max(minHold, newEnd - eventStart - event.zoomSpeed * 2);
+    }
+    
+    if (selectedZoomIndex === isDraggingZoom.index) {
+        document.getElementById('selectedZoomHold').value = event.holdDuration;
+        document.getElementById('selectedZoomHoldVal').textContent = event.holdDuration + 'ms';
+    }
+    
+    renderZoomTimeline();
+}
+
+function handleZoomDragEnd() {
+    isDraggingZoom = null;
+    document.removeEventListener('mousemove', handleZoomDrag);
+    document.removeEventListener('mouseup', handleZoomDragEnd);
 }
 
 function renderZoomTimeline() {
@@ -425,44 +479,45 @@ function renderZoomTimeline() {
         marker.textContent = event.zoomLevel + 'x';
         marker.dataset.index = index;
         
-        marker.addEventListener('click', (e) => {
-            e.stopPropagation();
-            selectZoomEvent(index);
-        });
+        const leftHandle = document.createElement('div');
+        leftHandle.className = 'zoom-handle left';
+        marker.appendChild(leftHandle);
+        
+        const rightHandle = document.createElement('div');
+        rightHandle.className = 'zoom-handle right';
+        marker.appendChild(rightHandle);
         
         zoomTimeline.appendChild(marker);
     });
 }
 
+function showZoomDetails() {
+    document.getElementById('details-empty').style.display = 'none';
+    document.getElementById('zoom-details').style.display = 'block';
+}
+
+function hideZoomDetails() {
+    document.getElementById('details-empty').style.display = 'block';
+    document.getElementById('zoom-details').style.display = 'none';
+}
+
 function selectZoomEvent(index) {
     selectedZoomIndex = index;
     const event = zoomEvents[index];
-    const zoomPanel = document.getElementById('zoom-panel');
     
-    if (!zoomPanel) return;
+    document.getElementById('selectedZoomLevel').value = event.zoomLevel;
+    document.getElementById('selectedZoomLevelVal').textContent = event.zoomLevel + 'x';
+    document.getElementById('selectedZoomSpeed').value = event.zoomSpeed;
+    document.getElementById('selectedZoomSpeedVal').textContent = event.zoomSpeed + 'ms';
+    document.getElementById('selectedZoomHold').value = event.holdDuration;
+    document.getElementById('selectedZoomHoldVal').textContent = event.holdDuration + 'ms';
     
-    // Update panel values
-    const selectedZoomLevel = document.getElementById('selectedZoomLevel');
-    const selectedZoomSpeed = document.getElementById('selectedZoomSpeed');
-    const selectedZoomHold = document.getElementById('selectedZoomHold');
+    showZoomDetails();
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelector('[data-tab="details"]').classList.add('active');
+    document.getElementById('details-tab').classList.add('active');
     
-    if (selectedZoomLevel) {
-        selectedZoomLevel.value = event.zoomLevel;
-        document.getElementById('selectedZoomLevelVal').textContent = event.zoomLevel + 'x';
-    }
-    if (selectedZoomSpeed) {
-        selectedZoomSpeed.value = event.zoomSpeed;
-        document.getElementById('selectedZoomSpeedVal').textContent = event.zoomSpeed + 'ms';
-    }
-    if (selectedZoomHold) {
-        selectedZoomHold.value = event.holdDuration;
-        document.getElementById('selectedZoomHoldVal').textContent = event.holdDuration + 'ms';
-    }
-    
-    // Show panel
-    zoomPanel.classList.add('visible');
-    
-    // Update timeline selection
     renderZoomTimeline();
 }
 
@@ -525,7 +580,6 @@ function easeInOutCubic(t) {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-// Find active zoom event for current time
 function findActiveZoomEvent(timeMs) {
     for (let i = 0; i < zoomEvents.length; i++) {
         const event = zoomEvents[i];
@@ -551,7 +605,6 @@ function resizeWrapperToVideo() {
     const mainRect = mainEditor.getBoundingClientRect();
     const controlsRect = editorControls.getBoundingClientRect();
     
-    // Account for settings panel (280px) and gaps
     const settingsWidth = 280;
     const availableWidth = mainRect.width - settingsWidth - 60;
     const availableHeight = mainRect.height - controlsRect.height - 60;
@@ -582,7 +635,6 @@ function updateLoop() {
         playhead.style.left = (videoElement.currentTime / videoElement.duration * 100) + '%';
     }
 
-    // Loop within trim points
     if (!videoElement.paused && videoElement.duration) {
         const startSec = trimStart * videoElement.duration;
         const endSec = trimEnd * videoElement.duration;
@@ -613,7 +665,6 @@ function updateLoop() {
         let cursorX = pos.x;
         let cursorY = pos.y;
         
-        // Check for active zoom event
         const activeZoom = autoZoomEnabled ? findActiveZoomEvent(currentTimeMs) : null;
         
         if (activeZoom) {
@@ -626,19 +677,15 @@ function updateLoop() {
             let animatedScale = 1;
             
             if (currentTimeMs < zoomInEnd) {
-                // Zooming in
                 const progress = (currentTimeMs - eventStart) / event.zoomSpeed;
                 animatedScale = 1 + (event.zoomLevel - 1) * easeInOutCubic(progress);
             } else if (currentTimeMs < holdEnd) {
-                // Holding
                 animatedScale = event.zoomLevel;
             } else {
-                // Zooming out
                 const progress = (currentTimeMs - holdEnd) / event.zoomSpeed;
                 animatedScale = event.zoomLevel - (event.zoomLevel - 1) * easeInOutCubic(progress);
             }
             
-            // Apply zoom to video
             const viewWidth = recordedWidth / animatedScale;
             const viewHeight = recordedHeight / animatedScale;
             
@@ -647,7 +694,6 @@ function updateLoop() {
             srcX = Math.max(0, Math.min(recordedWidth - viewWidth, srcX));
             srcY = Math.max(0, Math.min(recordedHeight - viewHeight, srcY));
             
-            // CSS transform
             const centerX = recordedWidth / 2;
             const centerY = recordedHeight / 2;
             const srcCenterX = srcX + viewWidth / 2;
@@ -658,19 +704,13 @@ function updateLoop() {
             
             videoElement.style.transition = 'none';
             videoElement.style.transform = `scale(${animatedScale}) translate(${moveX}%, ${moveY}%)`;
-            
-            // Transform cursor
-            cursorX = (pos.x - srcX) * animatedScale;
-            cursorY = (pos.y - srcY) * animatedScale;
         } else {
             videoElement.style.transform = 'scale(1) translate(0, 0)';
         }
         
-        // Scale cursor to display coordinates
         cursorX *= scaleX;
         cursorY *= scaleY;
         
-        // Offset for video position within wrapper
         const wrapperRect = wrapper.getBoundingClientRect();
         cursorX += videoRect.left - wrapperRect.left;
         cursorY += videoRect.top - wrapperRect.top;
@@ -699,7 +739,6 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     const overlay = document.getElementById('export-overlay');
     overlay.style.display = 'flex';
     
-    // Send all settings including per-zoom events and cursor settings
     ipcRenderer.send('export-video-with-effects', {
         videoPath: currentVideoPath,
         outputPath: outputPath,
