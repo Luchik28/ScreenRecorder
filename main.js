@@ -355,3 +355,41 @@ ipcMain.handle('stop-recording', async () => {
     return { success: false, error: err.message };
   }
 });
+
+// Handle save dialog for export
+ipcMain.handle('show-save-dialog', async (event, options) => {
+  const { dialog } = require('electron');
+  return await dialog.showSaveDialog(previewWindow || mainWindow, options);
+});
+
+// Export video with effects (cursor + zoom)
+ipcMain.on('export-video-with-effects', async (event, exportOptions) => {
+  const VideoExporter = require('./video-export');
+  const exporter = new VideoExporter(recorder.ffmpegPath);
+  
+  try {
+    await exporter.exportWithEffects(exportOptions, (progress) => {
+      // Send progress updates to preview window
+      if (previewWindow) {
+        previewWindow.webContents.send('export-progress', progress);
+      }
+    });
+    
+    console.log('Export complete:', exportOptions.outputPath);
+    
+    // Show success notification
+    if (previewWindow) {
+      previewWindow.webContents.send('export-complete', { success: true, path: exportOptions.outputPath });
+    }
+    
+    // Open folder containing exported file
+    const { shell } = require('electron');
+    shell.showItemInFolder(exportOptions.outputPath);
+  } catch (err) {
+    console.error('Export failed:', err);
+    if (previewWindow) {
+      previewWindow.webContents.send('export-complete', { success: false, error: err.message });
+    }
+  }
+});
+

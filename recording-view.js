@@ -21,6 +21,17 @@ let autoZoomEnabled = true;
 let isZooming = false;
 let lastZoomTime = 0;
 
+// Current zoom animation state (for cursor tracking)
+let currentZoomState = {
+    scale: 1,
+    focusX: 0,  // Focus point in recorded coordinates
+    focusY: 0,
+    startTime: 0,
+    phase: 'none', // 'zoomIn', 'hold', 'zoomOut', 'none'
+    targetMoveX: 0, // Target translate X percentage
+    targetMoveY: 0  // Target translate Y percentage
+};
+
 window.addEventListener('DOMContentLoaded', async () => {
     // Get DOM elements after page loads
     videoElement = document.getElementById('player');
@@ -59,8 +70,14 @@ window.addEventListener('DOMContentLoaded', async () => {
         
         videoElement.addEventListener('loadedmetadata', () => {
             console.log('Video metadata loaded successfully');
+            console.log('Video dimensions:', videoElement.videoWidth, 'x', videoElement.videoHeight);
             const loading = document.getElementById('loading-overlay');
             if (loading) loading.style.display = 'none';
+            
+            // Resize wrapper to match video aspect ratio
+            resizeWrapperToVideo();
+            window.addEventListener('resize', resizeWrapperToVideo);
+            
             videoElement.play().catch(e => console.warn('Autoplay blocked:', e));
             const playIcon = document.getElementById('play-icon');
             const pauseIcon = document.getElementById('pause-icon');
@@ -248,6 +265,91 @@ function findMousePosition(time) {
     return bestIndex !== -1 ? mousePositions[bestIndex] : null;
 }
 
+// Interpolated version for smooth cursor movement
+function findMousePositionInterpolated(time) {
+    if (mousePositions.length === 0) return null;
+    if (mousePositions.length === 1) return mousePositions[0];
+    
+    // Find the two positions surrounding the current time
+    let low = 0;
+    let high = mousePositions.length - 1;
+    
+    // Binary search for the first position with time >= target
+    while (low < high) {
+        let mid = Math.floor((low + high) / 2);
+        if (mousePositions[mid].time < time) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    
+    // low is now the index of first position with time >= target
+    const nextIndex = low;
+    const prevIndex = Math.max(0, nextIndex - 1);
+    
+    const prev = mousePositions[prevIndex];
+    const next = mousePositions[nextIndex];
+    
+    // If same point or at boundaries, return directly
+    if (prevIndex === nextIndex || prev.time === next.time) {
+        return prev;
+    }
+    
+    // Interpolate between prev and next
+    const t = (time - prev.time) / (next.time - prev.time);
+    const clampedT = Math.max(0, Math.min(1, t));
+    
+    // Smooth interpolation using ease-out for more natural movement
+    const smoothT = 1 - Math.pow(1 - clampedT, 2);
+    
+    return {
+        x: prev.x + (next.x - prev.x) * smoothT,
+        y: prev.y + (next.y - prev.y) * smoothT,
+        time: time,
+        click: prev.click || next.click // Pass click if either has it
+    };
+}
+
+// Easing function for smooth zoom animations
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// Resize wrapper to match video aspect ratio
+function resizeWrapperToVideo() {
+    const wrapper = document.querySelector('.video-preview-wrapper');
+    const mainEditor = document.querySelector('.main-editor');
+    const editorControls = document.querySelector('.editor-controls');
+    
+    if (!videoElement.videoWidth || !videoElement.videoHeight) return;
+    
+    const videoAspect = videoElement.videoWidth / videoElement.videoHeight;
+    
+    // Calculate available space
+    const mainRect = mainEditor.getBoundingClientRect();
+    const controlsRect = editorControls.getBoundingClientRect();
+    
+    const availableWidth = mainRect.width - 40; // padding
+    const availableHeight = mainRect.height - controlsRect.height - 60; // controls + gaps
+    
+    let wrapperWidth, wrapperHeight;
+    
+    // Fit within available space maintaining aspect ratio
+    if (availableWidth / availableHeight > videoAspect) {
+        // Height constrained
+        wrapperHeight = availableHeight;
+        wrapperWidth = wrapperHeight * videoAspect;
+    } else {
+        // Width constrained
+        wrapperWidth = availableWidth;
+        wrapperHeight = wrapperWidth / videoAspect;
+    }
+    
+    wrapper.style.width = wrapperWidth + 'px';
+    wrapper.style.height = wrapperHeight + 'px';
+}
+
 function updateLoop() {
     if (mousePositions.length === 0) {
         requestAnimationFrame(updateLoop);
@@ -270,10 +372,19 @@ function updateLoop() {
         }
     }
 
-    const pos = findMousePosition(currentTimeMs);
+    // Interpolate mouse position for smooth movement
+    const pos = findMousePositionInterpolated(currentTimeMs);
     if (pos) {
-        // Use the actual drawn video rect to avoid letterboxing errors from object-fit: contain
-        const videoRect = videoElement.getBoundingClientRect();
+        // The wrapper now exactly matches the video aspect ratio
+        // so the video fills the wrapper completely
+        const wrapper = document.querySelector('.video-preview-wrapper');
+        const wrapperRect = wrapper.getBoundingClientRect();
+        
+        // Display size = wrapper size since video fills it
+        const displayWidth = wrapperRect.width;
+        const displayHeight = wrapperRect.height;
+        
+        // The video's recorded dimensions
         const recordedWidth = videoElement.videoWidth;
         const recordedHeight = videoElement.videoHeight;
 
@@ -282,43 +393,111 @@ function updateLoop() {
             return;
         }
 
-        const scaleX = videoRect.width / recordedWidth;
-        const scaleY = videoRect.height / recordedHeight;
+        // Calculate scaling: mouse positions are in screen coordinates, video is also screen resolution
+        const scaleX = displayWidth / recordedWidth;
+        const scaleY = displayHeight / recordedHeight;
 
-        // Clamp inside the rendered area to avoid drifting into letterbox space
-        let targetX = videoRect.left + (pos.x * scaleX) - CURSOR_HOTSPOT_X;
-        let targetY = videoRect.top + (pos.y * scaleY) - CURSOR_HOTSPOT_Y;
-        targetX = Math.max(videoRect.left - CURSOR_HOTSPOT_X, Math.min(videoRect.right - CURSOR_HOTSPOT_X, targetX));
-        targetY = Math.max(videoRect.top - CURSOR_HOTSPOT_Y, Math.min(videoRect.bottom - CURSOR_HOTSPOT_Y, targetY));
+        // Position cursor with zoom transform applied
+        let cursorX = pos.x;
+        let cursorY = pos.y;
+        
+        // If zooming, transform cursor using same logic as export (crop-and-scale)
+        if (currentZoomState.phase !== 'none') {
+            const elapsed = Date.now() - currentZoomState.startTime;
+            let progress = Math.min(1, elapsed / zoomDuration);
+            const eased = easeInOutCubic(progress);
+            
+            let animatedScale;
+            if (currentZoomState.phase === 'zoomIn') {
+                animatedScale = 1 + (zoomLevel - 1) * eased;
+            } else if (currentZoomState.phase === 'hold') {
+                animatedScale = zoomLevel;
+            } else if (currentZoomState.phase === 'zoomOut') {
+                animatedScale = zoomLevel - (zoomLevel - 1) * eased;
+            }
+            
+            // Use same crop-and-scale logic as export
+            // Calculate the visible source rectangle (in recorded coordinates)
+            const viewWidth = recordedWidth / animatedScale;
+            const viewHeight = recordedHeight / animatedScale;
+            
+            // Center on focus point, clamped to bounds
+            let srcX = currentZoomState.focusX - viewWidth / 2;
+            let srcY = currentZoomState.focusY - viewHeight / 2;
+            srcX = Math.max(0, Math.min(recordedWidth - viewWidth, srcX));
+            srcY = Math.max(0, Math.min(recordedHeight - viewHeight, srcY));
+            
+            // Transform cursor from source coordinates to zoomed coordinates
+            cursorX = (pos.x - srcX) * animatedScale;
+            cursorY = (pos.y - srcY) * animatedScale;
+        }
+        
+        // Scale to display coordinates
+        cursorX *= scaleX;
+        cursorY *= scaleY;
     
-        cursor.style.transform = `translate(${targetX}px, ${targetY}px)`;
+        cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
         cursor.style.display = 'block';
 
         // Zoom Logic - only when we have a valid position
         if (autoZoomEnabled && !videoElement.paused) {
-            // Check if there was a click recently or if we are currently over one
-            // We look back a bit to catch the start of the click event
             if (pos.click && !isZooming) {
                 isZooming = true;
                 
-                // Calculate center offset for zoom based on rendered rect
-                const videoRect = videoElement.getBoundingClientRect();
-                const recordedWidth = videoElement.videoWidth;
-                const recordedHeight = videoElement.videoHeight;
+                // Store zoom focus point for cursor tracking
+                currentZoomState.focusX = pos.x;
+                currentZoomState.focusY = pos.y;
+                currentZoomState.startTime = Date.now();
+                currentZoomState.phase = 'zoomIn';
 
-                const normX = (pos.x / recordedWidth) - 0.5;
-                const normY = (pos.y / recordedHeight) - 0.5;
-            
-                // Move the video in the opposite direction of the mouse offset
-                const moveX = -normX * 100 * zoomLevel; 
-                const moveY = -normY * 100 * zoomLevel;
+                // Calculate the crop region for the video (same as cursor logic)
+                const viewWidth = recordedWidth / zoomLevel;
+                const viewHeight = recordedHeight / zoomLevel;
+                let srcX = pos.x - viewWidth / 2;
+                let srcY = pos.y - viewHeight / 2;
+                srcX = Math.max(0, Math.min(recordedWidth - viewWidth, srcX));
+                srcY = Math.max(0, Math.min(recordedHeight - viewHeight, srcY));
+                
+                // Convert to CSS transform: we need to translate so that srcX,srcY is at origin, then scale
+                // The transform origin is center, so we compute the offset from center
+                const centerX = recordedWidth / 2;
+                const centerY = recordedHeight / 2;
+                const srcCenterX = srcX + viewWidth / 2;
+                const srcCenterY = srcY + viewHeight / 2;
+                
+                // How much to translate (in percentage of element size) after scaling
+                // We want srcCenter to appear at display center
+                // After scale(S), translate(X%, Y%) moves by X%*width, Y%*height
+                const moveX = ((centerX - srcCenterX) / recordedWidth) * 100;
+                const moveY = ((centerY - srcCenterY) / recordedHeight) * 100;
+                
+                // Store for consistency
+                currentZoomState.targetMoveX = moveX;
+                currentZoomState.targetMoveY = moveY;
 
+                // Ultra smooth easing
+                videoElement.style.transition = `transform ${zoomDuration}ms cubic-bezier(0.37, 0, 0.63, 1)`;
                 videoElement.style.transform = `scale(${zoomLevel}) translate(${moveX}%, ${moveY}%)`;
                 
+                // Transition to hold phase
                 setTimeout(() => {
+                    currentZoomState.phase = 'hold';
+                }, zoomDuration);
+                
+                // Hold zoom, then animate OUT
+                setTimeout(() => {
+                    currentZoomState.startTime = Date.now();
+                    currentZoomState.phase = 'zoomOut';
+                    
+                    videoElement.style.transition = `transform ${zoomDuration}ms cubic-bezier(0.37, 0, 0.63, 1)`;
                     videoElement.style.transform = 'scale(1) translate(0, 0)';
-                    setTimeout(() => { isZooming = false; }, zoomDuration);
-                }, 1000); // Hold zoom for 1 second
+                    
+                    setTimeout(() => { 
+                        isZooming = false; 
+                        currentZoomState.phase = 'none';
+                        currentZoomState.scale = 1;
+                    }, zoomDuration);
+                }, 1000 + zoomDuration);
             }
         }
     }
@@ -326,15 +505,65 @@ function updateLoop() {
     requestAnimationFrame(updateLoop);
 }
 
-document.getElementById('saveBtn').addEventListener('click', () => {
+document.getElementById('saveBtn').addEventListener('click', async () => {
     const duration = videoElement.duration;
     const startSec = trimStart * duration;
     const endSec = trimEnd * duration;
+    const trimDuration = endSec - startSec;
     
-    const trimInfo = {
-        start: startSec,
-        duration: endSec - startSec
-    };
+    // Show a save dialog
+    const exportPath = await ipcRenderer.invoke('show-save-dialog', {
+        defaultPath: `promo-${Date.now()}.mp4`,
+        filters: [{ name: 'MP4 Video', extensions: ['mp4'] }]
+    });
+    
+    if (exportPath.canceled) return;
+    
+    const outputPath = exportPath.filePath;
+    
+    // Show export overlay
+    const overlay = document.getElementById('export-overlay');
+    overlay.style.display = 'flex';
+    
+    // Start rendering video with effects
+    ipcRenderer.send('export-video-with-effects', {
+        videoPath: currentVideoPath,
+        outputPath: outputPath,
+        mouseData: mousePositions,
+        trimStart: startSec,
+        trimDuration: trimDuration,
+        zoomLevel: zoomLevel,
+        zoomDuration: zoomDuration,
+        autoZoomEnabled: autoZoomEnabled
+    });
+});
 
-    ipcRenderer.send('save-video-to-downloads', currentVideoPath, trimInfo);
+// Handle export progress updates
+ipcRenderer.on('export-progress', (event, progress) => {
+    const stageText = document.getElementById('export-stage');
+    const progressBar = document.getElementById('export-progress-bar');
+    const percent = document.getElementById('export-percent');
+    
+    const stageNames = {
+        'extracting': 'Extracting frames from video...',
+        'processing': 'Applying cursor and zoom effects...',
+        'encoding': 'Encoding final video...',
+        'complete': 'Complete!'
+    };
+    
+    stageText.textContent = stageNames[progress.stage] || progress.stage;
+    progressBar.style.width = progress.progress + '%';
+    percent.textContent = Math.round(progress.progress) + '%';
+});
+
+// Handle export completion
+ipcRenderer.on('export-complete', (event, result) => {
+    const overlay = document.getElementById('export-overlay');
+    overlay.style.display = 'none';
+    
+    if (result.success) {
+        alert('Video exported successfully!\nSaved to: ' + result.path);
+    } else {
+        alert('Export failed: ' + result.error);
+    }
 });

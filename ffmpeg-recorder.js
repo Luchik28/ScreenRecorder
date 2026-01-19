@@ -134,6 +134,13 @@ class FFmpegRecorder {
     const { screen } = require('electron');
     this.mousePositions = [];
     const startTime = Date.now();
+    
+    // Get display scale factor (e.g., 1.25 for 125% scaling)
+    // This is needed because getCursorScreenPoint returns logical pixels
+    // but FFmpeg captures at physical/native resolution
+    const primaryDisplay = screen.getPrimaryDisplay();
+    this.displayScaleFactor = primaryDisplay.scaleFactor || 1;
+    console.log('Display scale factor:', this.displayScaleFactor);
 
     // Simple click detection using PowerShell GetAsyncKeyState without Add-Type
     // We'll use a direct command that polls the mouse state
@@ -191,9 +198,11 @@ while($true) {
       const hasClick = clickPending;
       clickPending = false; // Reset for next poll
       
+      // Apply display scale factor to convert logical pixels to physical pixels
+      // This ensures mouse coordinates match the FFmpeg capture resolution
       this.mousePositions.push({
-        x: point.x,
-        y: point.y,
+        x: Math.round(point.x * this.displayScaleFactor),
+        y: Math.round(point.y * this.displayScaleFactor),
         time: timestamp,
         click: hasClick
       });
