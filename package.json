@@ -1,0 +1,24 @@
+{
+  "name": "promo-screen-recorder",
+  "version": "1.0.0",
+  "description": "Automatic promotional screenshot and screen recording tool",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "electron",
+    "screen-recorder",
+    "promotional",
+    "video"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  },
+  "dependencies": {
+    "canvas": "^3.2.1"
+  }
+}
