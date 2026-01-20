@@ -909,6 +909,9 @@ function updateLoop() {
         
         const activeZoom = autoZoomEnabled ? findActiveZoomEvent(currentTimeMs) : null;
         
+        // Get click-effects-container to apply same transform as video
+        const clickEffectsContainer = document.getElementById('click-effects-container');
+        
         if (activeZoom) {
             const event = activeZoom.event;
             const eventStart = event.time;
@@ -952,10 +955,20 @@ function updateLoop() {
             const moveX = ((centerX - srcCenterX) / recordedWidth) * 100;
             const moveY = ((centerY - srcCenterY) / recordedHeight) * 100;
             
+            const transformValue = `scale(${animatedScale}) translate(${moveX}%, ${moveY}%)`;
             videoElement.style.transition = 'none';
-            videoElement.style.transform = `scale(${animatedScale}) translate(${moveX}%, ${moveY}%)`;
+            videoElement.style.transform = transformValue;
+            
+            // Apply same transform to click effects container so effects track with video
+            if (clickEffectsContainer) {
+                clickEffectsContainer.style.transform = transformValue;
+                clickEffectsContainer.style.transformOrigin = 'center center';
+            }
         } else {
             videoElement.style.transform = 'scale(1) translate(0, 0)';
+            if (clickEffectsContainer) {
+                clickEffectsContainer.style.transform = 'scale(1) translate(0, 0)';
+            }
         }
         
         cursorX *= scaleX;
@@ -968,19 +981,22 @@ function updateLoop() {
         cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
         cursor.style.display = 'block';
         
-        // Handle click effects - use actual click position if available
+        // Handle click effects - spawn at cursor position, container tracks with video
         if (cursorSettings.clickEffect !== 'none' && pos.click && pos.actualClickTime !== null) {
             // Track by actual click time to prevent duplicate effects
             if (pos.actualClickTime > lastProcessedClickTime) {
                 lastProcessedClickTime = pos.actualClickTime;
                 
-                // Use the actual click position, not the interpolated cursor position
-                let effectX = cursorX;
-                let effectY = cursorY;
-                if (pos.clickX !== null && pos.clickY !== null) {
-                    effectX = pos.clickX * scaleX + (videoRect.left - wrapperRect.left);
-                    effectY = pos.clickY * scaleY + (videoRect.top - wrapperRect.top);
-                }
+                // Use the actual click position in original video coordinates
+                let effectX = pos.clickX !== null ? pos.clickX : pos.x;
+                let effectY = pos.clickY !== null ? pos.clickY : pos.y;
+                
+                // Scale to display size (same as cursor before zoom transform)
+                effectX *= scaleX;
+                effectY *= scaleY;
+                
+                // The click-effects-container now has the same transform as the video,
+                // so we just need the basic scaled position (no zoom math needed)
                 spawnClickEffect(effectX, effectY);
             }
         }
