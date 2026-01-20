@@ -1,214 +1,220 @@
+/* Base styles */
 body {
   margin: 0;
   padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   -webkit-app-region: drag;
   overflow: hidden;
+  background: transparent;
 }
 
+/* Main toolbar - macOS screenshot style */
 .toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(180, 170, 175, 0.75);
+  backdrop-filter: blur(50px) saturate(200%);
+  -webkit-backdrop-filter: blur(50px) saturate(200%);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  height: 56px;
+  box-shadow: 
+    0 2px 20px rgba(0, 0, 0, 0.15),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
+  border: 0.5px solid rgba(0, 0, 0, 0.15);
   -webkit-app-region: drag;
+  transition: all 0.3s ease;
 }
 
-.toolbar-left,
-.toolbar-center,
+.toolbar.recording {
+  width: fit-content;
+  gap: 12px;
+  padding: 10px 20px;
+  margin: 0 auto;
+  justify-content: center;
+}
+
+.toolbar.recording .btn-close,
+.toolbar.recording .capture-modes {
+  display: none;
+}
+
+/* Close button - circle with X */
+.btn-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(60, 50, 55, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.btn-close:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(40, 30, 35, 0.95);
+}
+
+.btn-close:active {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+/* Capture mode button groups */
+.capture-modes,
+.record-modes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Mode buttons */
+.mode-btn {
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(60, 50, 55, 0.85);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+  padding: 0;
+}
+
+.mode-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(40, 30, 35, 1);
+}
+
+.mode-btn.active {
+  background: rgba(80, 70, 75, 0.25);
+  color: rgba(40, 30, 35, 1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Separator line */
+.separator {
+  width: 1px;
+  height: 36px;
+  background: rgba(60, 50, 55, 0.25);
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+
+/* Right side controls */
 .toolbar-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
 }
 
-.icon-btn-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 4px 8px;
-  transition: all 0.2s ease;
-  -webkit-app-region: no-drag;
-}
-
-.icon-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.5);
-  color: #666;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.icon-btn-container:hover .icon-btn {
-  background: rgba(255, 255, 255, 0.7);
-  color: #333;
-}
-
-.icon-btn-container.active .icon-btn {
-  background: #333;
-  color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.icon-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: white;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-  letter-spacing: -0.01em;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s ease;
-  -webkit-app-region: no-drag;
-  background: rgba(255, 255, 255, 0.9);
-  color: #333;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-.btn:active {
-  transform: translateY(0);
-}
-
+/* Selection status */
 .selection-status {
   font-size: 13px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
-  margin-right: 16px;
+  font-weight: 400;
+  color: rgba(60, 50, 55, 0.7);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  max-width: 150px;
 }
 
-.btn-record {
-  background: #333;
-  color: white;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
+/* Options button */
+.options-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: all 0.2s ease;
+  gap: 4px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(50, 40, 45, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
   -webkit-app-region: no-drag;
 }
 
-.btn-record:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  background: #444;
+.options-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
 }
 
-.btn-record:disabled {
+.options-btn svg {
+  opacity: 0.7;
+}
+
+/* Capture/Record button */
+.capture-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.65);
+  color: rgba(50, 40, 45, 0.95);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.capture-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.capture-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.capture-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  background: #ccc;
 }
 
-.btn-stop {
-  background: #555;
+.capture-btn.stop {
+  background: rgba(200, 60, 60, 0.8);
   color: white;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s ease;
-  -webkit-app-region: no-drag;
 }
 
-.btn-stop:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  background: #666;
+.capture-btn.stop:hover {
+  background: rgba(200, 60, 60, 0.95);
 }
 
+/* Countdown display */
 .countdown {
-  font-size: 32px;
-  font-weight: 700;
-  color: #333;
-  -webkit-app-region: no-drag;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(50, 40, 45, 0.9);
   animation: pulse 0.5s ease-in-out;
+  min-width: 50px;
+  text-align: center;
 }
 
+/* Timer display */
 .timer {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: rgba(50, 40, 45, 0.85);
   font-variant-numeric: tabular-nums;
-  -webkit-app-region: no-drag;
+  min-width: 50px;
+  text-align: center;
 }
 
 @keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.2);
-  }
-}
-
-.btn-icon {
-  font-size: 16px;
-}
-
-.btn-icon-only {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.8);
-  color: #666;
-  font-size: 18px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  -webkit-app-region: no-drag;
-}
-
-.btn-icon-only:hover {
-  background: rgba(255, 255, 255, 1);
-  color: #333;
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 
 /* Window Grid Overlay */
@@ -218,9 +224,9 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(30, 28, 32, 0.85);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
   display: none;
   z-index: 998;
   padding: 40px;
@@ -233,45 +239,43 @@ body {
 
 .window-grid-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
   max-width: 1400px;
   margin: 0 auto;
 }
 
 .window-item {
-  background: rgba(255, 255, 255, 0.1);
-  border: 3px solid transparent;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid transparent;
   border-radius: 12px;
-  padding: 16px;
+  padding: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .window-item:hover {
-  border-color: white;
-  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.12);
   transform: scale(1.02);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .window-item.selected {
-  border-color: white;
-  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .window-thumbnail {
   width: 100%;
   aspect-ratio: 16 / 9;
-  background: #000;
+  background: #1a1a1a;
   border-radius: 8px;
-  margin-bottom: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -284,15 +288,15 @@ body {
 }
 
 .window-item .window-thumbnail.placeholder {
-  font-size: 24px;
-  font-weight: bold;
-  color: #444;
+  font-size: 20px;
+  font-weight: 600;
+  color: #555;
 }
 
 .window-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: white;
+  color: rgba(255, 255, 255, 0.9);
   text-align: center;
   width: 100%;
   white-space: nowrap;
@@ -300,27 +304,24 @@ body {
   text-overflow: ellipsis;
 }
 
-.selection-status {
-  font-size: 13px;
+/* Legacy button styles for compatibility */
+.btn-record {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.65);
+  color: rgba(50, 40, 45, 0.95);
+  font-size: 14px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
-  margin-right: 16px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
-  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-
-
-.selection-status {
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
-  margin-right: 16px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
+.btn-record:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

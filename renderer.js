@@ -14,7 +14,6 @@ const selectWindowBtn = document.getElementById('selectWindowBtn');
 const fullScreenBtn = document.getElementById('fullScreenBtn');
 const recordBtn = document.getElementById('recordBtn');
 const stopBtn = document.getElementById('stopBtn');
-const minimizeBtn = document.getElementById('minimizeBtn');
 const closeBtn = document.getElementById('closeBtn');
 const windowGrid = document.getElementById('windowGrid');
 const windowGridContainer = document.getElementById('windowGridContainer');
@@ -27,8 +26,25 @@ selectWindowBtn.addEventListener('click', showWindowGrid);
 fullScreenBtn.addEventListener('click', selectFullScreen);
 recordBtn.addEventListener('click', startCountdown);
 stopBtn.addEventListener('click', stopRecording);
-minimizeBtn.addEventListener('click', () => window.electronAPI.minimizeApp());
 closeBtn.addEventListener('click', () => window.electronAPI.closeApp());
+
+// Initialize FFmpeg in background immediately when app loads
+window.addEventListener('DOMContentLoaded', async () => {
+  countdown.textContent = 'Loading...';
+  countdown.style.display = 'block';
+  timer.style.display = 'none';
+  
+  try {
+    console.log('Initializing FFmpeg in background...');
+    await window.electronAPI.checkFFmpeg();
+    console.log('FFmpeg ready');
+  } catch (err) {
+    console.error('FFmpeg initialization failed:', err);
+  }
+  
+  // Hide loading text after FFmpeg is ready
+  countdown.style.display = 'none';
+});
 
 // Start in window selection mode by default
 showWindowGrid();
@@ -225,15 +241,20 @@ async function startCountdown() {
   const selectionStatus = document.getElementById('selectionStatus');
   const toolbarLeft = document.querySelector('.toolbar-left');
   
-  // Hide source selectors immediately as they are not needed during recording
-  if (toolbarLeft) toolbarLeft.style.display = 'none';
+  // Collapse toolbar immediately
+  document.querySelector('.toolbar').classList.add('recording');
   
+  // Change stop button to "Cancel" and show it
+  stopBtn.textContent = 'Cancel';
+  stopBtn.style.display = 'flex';
   recordBtn.style.display = 'none';
   
-  if (selectionStatus) {
-    selectionStatus.textContent = 'Preparing FFmpeg...';
-    selectionStatus.style.display = 'block';
-  }
+  // Show countdown instead of timer
+  countdown.style.display = 'block';
+  timer.style.display = 'none';
+  selectionStatus.style.display = 'none';
+  
+  if (toolbarLeft) toolbarLeft.style.display = 'none';
 
   // Pre-maximize the window during the early setup
   if (captureKind === 'window' && selectedWindowHandle) {
@@ -252,7 +273,6 @@ async function startCountdown() {
     }
 
     // Now do the visual 3-2-1 countdown
-    countdown.style.display = 'block';
     for (let i = 3; i > 0; i--) {
       countdown.textContent = i;
       countdown.style.animation = 'none';
@@ -260,15 +280,12 @@ async function startCountdown() {
         countdown.style.animation = 'pulse 0.5s ease-in-out';
       }, 10);
       
-      if (selectionStatus) selectionStatus.textContent = i === 1 ? 'Go!' : 'Ready...';
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
+    // After countdown, switch to timer and change Cancel to Stop
     countdown.style.display = 'none';
-    if (selectionStatus) selectionStatus.style.display = 'none';
-
-    // Show timer and stop button (Mouse tracking started early for warmup)
-    stopBtn.style.display = 'flex';
+    stopBtn.textContent = 'Stop';
     timer.style.display = 'block';
     recordingStartTime = Date.now();
     timerInterval = setInterval(updateTimer, 100);
@@ -282,6 +299,9 @@ async function startCountdown() {
     alert('Could not start recording: ' + err.message);
     if (toolbarLeft) toolbarLeft.style.display = 'flex';
     recordBtn.style.display = 'flex';
+    document.querySelector('.toolbar').classList.remove('recording');
+    stopBtn.style.display = 'none';
+    countdown.style.display = 'none';
   }
 }
 
@@ -309,6 +329,9 @@ async function stopRecording() {
     timer.style.display = 'none';
     recordBtn.style.display = 'flex';
     
+    // Restore toolbar after recording stops
+    document.querySelector('.toolbar').classList.remove('recording');
+    
     const result = await window.electronAPI.stopRecording();
     
     if (result.success) {
@@ -321,8 +344,6 @@ async function stopRecording() {
     
     // Restore toolbar after recording stops
     window.electronAPI.showToolbar();
-    const toolbarLeft = document.querySelector('.toolbar-left');
-    if (toolbarLeft) toolbarLeft.style.display = 'flex';
     
     document.body.style.opacity = '1';
     selectionStatus.style.display = 'block';
@@ -333,7 +354,7 @@ async function stopRecording() {
     selectWindowBtn.classList.remove('active');
     fullScreenBtn.classList.remove('active');
     selectionStatus.textContent = 'No source selected';
-    selectionStatus.style.color = 'rgba(255, 255, 255, 0.7)';
+    selectionStatus.style.color = 'rgba(60, 50, 55, 0.7)';
   } catch (err) {
     console.error('Error stopping recording:', err);
     alert('Error stopping recording: ' + err.message);
