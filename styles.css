@@ -245,6 +245,12 @@ body {
   opacity: 1;
   padding: 20px;
   overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.window-grid.active::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
 }
 
 .window-grid-container {

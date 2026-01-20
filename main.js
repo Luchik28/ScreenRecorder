@@ -370,9 +370,6 @@ ipcMain.handle('stop-recording', async () => {
       previewWindow.loadFile('recording.html', { search: query });
       previewWindow.maximize();
 
-      // Open dev tools for debugging
-      previewWindow.webContents.openDevTools();
-
       previewWindow.on('closed', () => {
         previewWindow = null;
       });

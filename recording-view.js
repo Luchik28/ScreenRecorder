@@ -15,9 +15,14 @@ let isDragging = null;
 // Cursor settings
 let cursorSettings = {
     style: 'windows',
-    color: '#a855f7',
-    size: 24
+    color: '#000000',
+    size: 24,
+    clickEffect: 'none' // none, ripple, confetti
 };
+
+// Active click effects being rendered
+let activeClickEffects = [];
+let lastProcessedClickTime = -1; // Track which clicks we've already shown effects for
 
 // Zoom settings (defaults)
 let defaultZoomLevel = 1.5;
@@ -67,6 +72,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             resizeWrapperToVideo();
             window.addEventListener('resize', resizeWrapperToVideo);
             
+            // Initialize zoom events now that we have video duration
+            if (mousePositions.length > 0) {
+                initializeZoomEvents();
+            }
+            
             videoElement.play().catch(e => console.warn('Autoplay blocked:', e));
             document.getElementById('play-icon').style.display = 'none';
             document.getElementById('pause-icon').style.display = 'block';
@@ -84,7 +94,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             const data = JSON.parse(fs.readFileSync(mouseDataPath, 'utf8'));
             mousePositions = data.positions;
             
-            initializeZoomEvents();
+            // Zoom events will be initialized after video metadata loads
             
             cursor.style.display = 'block';
             updateCursorAppearance();
@@ -99,25 +109,109 @@ window.addEventListener('DOMContentLoaded', async () => {
     setupCursorSettings();
     setupZoomSettings();
     setupZoomTimeline();
+    
+    // Initialize color swatch selection to match default color
+    document.querySelectorAll('.color-swatch').forEach(swatch => {
+        if (swatch.dataset.color === cursorSettings.color) {
+            swatch.classList.add('selected');
+        }
+    });
+    
     requestAnimationFrame(updateLoop);
 });
 
 function initializeZoomEvents() {
     zoomEvents = [];
+    
+    const videoDuration = videoElement.duration * 1000; // ms
+    const fullZoomDuration = defaultZoomSpeed * 2 + defaultZoomHold; // Full size zoom
+    
+    // Get all clicks first
+    const allClicks = [];
     for (let i = 0; i < mousePositions.length; i++) {
         if (mousePositions[i].click) {
-            zoomEvents.push({
+            allClicks.push({
                 time: mousePositions[i].time,
                 x: mousePositions[i].x,
                 y: mousePositions[i].y,
+                index: i
+            });
+        }
+    }
+    
+    // Remove the last click (used to stop recording)
+    if (allClicks.length > 0) {
+        allClicks.pop();
+    }
+    
+    // First pass: create zoom events only for clicks that can fit a FULL zoom
+    // Or merge with previous if they're close
+    for (let i = 0; i < allClicks.length; i++) {
+        const clickTime = allClicks[i].time;
+        
+        // Skip if click is past video duration
+        if (clickTime >= videoDuration) continue;
+        
+        const availableTime = videoDuration - clickTime;
+        
+        // Check if we can fit a full zoom
+        if (availableTime >= fullZoomDuration) {
+            // Check if this would overlap with or be close to the previous zoom
+            if (zoomEvents.length > 0) {
+                const prev = zoomEvents[zoomEvents.length - 1];
+                const prevEnd = prev.time + prev.zoomSpeed * 2 + prev.holdDuration;
+                const gap = clickTime - prevEnd;
+                
+                // If gap is less than 500ms, merge with previous instead of creating new
+                if (gap < 500) {
+                    // Extend previous zoom to include this click
+                    const newEndTime = Math.min(clickTime + fullZoomDuration, videoDuration);
+                    prev.holdDuration = newEndTime - prev.time - prev.zoomSpeed * 2;
+                    // Average position
+                    prev.x = Math.round((prev.x + allClicks[i].x) / 2);
+                    prev.y = Math.round((prev.y + allClicks[i].y) / 2);
+                    continue;
+                }
+            }
+            
+            // Create new full-size zoom
+            zoomEvents.push({
+                time: clickTime,
+                x: allClicks[i].x,
+                y: allClicks[i].y,
                 zoomLevel: defaultZoomLevel,
                 zoomSpeed: defaultZoomSpeed,
                 holdDuration: defaultZoomHold,
                 enabled: true
             });
+        } else {
+            // Not enough time for full zoom - try to merge with previous
+            if (zoomEvents.length > 0) {
+                const prev = zoomEvents[zoomEvents.length - 1];
+                const prevEnd = prev.time + prev.zoomSpeed * 2 + prev.holdDuration;
+                
+                // Extend previous zoom to reach as far as possible
+                const newEndTime = Math.min(clickTime + 500, videoDuration); // extend a bit past click
+                if (newEndTime > prevEnd) {
+                    prev.holdDuration = newEndTime - prev.time - prev.zoomSpeed * 2;
+                    // Weight position toward new click
+                    prev.x = Math.round((prev.x + allClicks[i].x) / 2);
+                    prev.y = Math.round((prev.y + allClicks[i].y) / 2);
+                }
+            }
+            // Skip creating a new shrunk zoom - just don't create it
         }
     }
-    console.log(`Found ${zoomEvents.length} click events`);
+    
+    // Final cleanup: ensure no zoom extends past video
+    for (const event of zoomEvents) {
+        const eventEnd = event.time + event.zoomSpeed * 2 + event.holdDuration;
+        if (eventEnd > videoDuration) {
+            event.holdDuration = Math.max(100, videoDuration - event.time - event.zoomSpeed * 2);
+        }
+    }
+    
+    console.log(`Found ${zoomEvents.length} zoom events after processing`);
 }
 
 function setupTabs() {
@@ -250,6 +344,15 @@ function setupCursorSettings() {
         document.getElementById('cursorSizeVal').textContent = cursorSettings.size + 'px';
         updateCursorAppearance();
     });
+    
+    // Click effect selection
+    document.querySelectorAll('.click-effect-option').forEach(option => {
+        option.addEventListener('click', () => {
+            document.querySelectorAll('.click-effect-option').forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            cursorSettings.clickEffect = option.dataset.effect;
+        });
+    });
 }
 
 function updateCursorAppearance() {
@@ -375,13 +478,45 @@ function setupZoomTimeline() {
     const zoomTimeline = document.getElementById('zoom-timeline');
     if (!zoomTimeline) return;
     
+    // Add keyboard handler for deleting selected zoom
+    document.addEventListener('keydown', (e) => {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedZoomIndex !== -1) {
+            e.preventDefault();
+            zoomEvents.splice(selectedZoomIndex, 1);
+            selectedZoomIndex = -1;
+            hideZoomDetails();
+            renderZoomTimeline();
+        }
+    });
+    
     zoomTimeline.addEventListener('click', (e) => {
         if (e.target === zoomTimeline && !isDraggingZoom) {
             const rect = zoomTimeline.getBoundingClientRect();
             const clickPos = (e.clientX - rect.left) / rect.width;
             
-            const duration = mousePositions.length > 0 ? mousePositions[mousePositions.length - 1].time : 0;
-            const clickTime = clickPos * duration;
+            const videoDuration = videoElement.duration * 1000;
+            if (!videoDuration || videoDuration <= 0) return;
+            
+            const clickTime = clickPos * videoDuration;
+            const zoomDuration = defaultZoomSpeed * 2 + defaultZoomHold;
+            
+            // HARD CHECK: Cannot start at or past video duration
+            if (clickTime < 0 || clickTime >= videoDuration) return;
+            
+            // HARD CHECK: zoom would extend past video end
+            if (clickTime + zoomDuration > videoDuration) return;
+            
+            // Check if it would overlap with existing zooms
+            for (const existingZoom of zoomEvents) {
+                const existingStart = existingZoom.time;
+                const existingEnd = existingZoom.time + existingZoom.zoomSpeed * 2 + existingZoom.holdDuration;
+                const newEnd = clickTime + zoomDuration;
+                
+                // Check for overlap
+                if (!(newEnd <= existingStart || clickTime >= existingEnd)) {
+                    return; // Would overlap
+                }
+            }
             
             const nearestPos = findMousePositionInterpolated(clickTime);
             
@@ -412,8 +547,21 @@ function setupZoomTimeline() {
             document.addEventListener('mousemove', handleZoomDrag);
             document.addEventListener('mouseup', handleZoomDragEnd);
         } else if (e.target.classList.contains('zoom-marker') && !e.target.classList.contains('zoom-handle')) {
+            e.preventDefault();
             const index = parseInt(e.target.dataset.index);
             selectZoomEvent(index);
+            
+            // Start dragging the entire zoom box
+            const zoomTimeline = document.getElementById('zoom-timeline');
+            const rect = zoomTimeline.getBoundingClientRect();
+            const videoDuration = videoElement.duration * 1000;
+            const clickTime = ((e.clientX - rect.left) / rect.width) * videoDuration;
+            const event = zoomEvents[index];
+            const offsetFromStart = clickTime - event.time;
+            
+            isDraggingZoom = { index, type: 'move', offsetFromStart };
+            document.addEventListener('mousemove', handleZoomDrag);
+            document.addEventListener('mouseup', handleZoomDragEnd);
         }
     });
 }
@@ -424,25 +572,74 @@ function handleZoomDrag(e) {
     const zoomTimeline = document.getElementById('zoom-timeline');
     const rect = zoomTimeline.getBoundingClientRect();
     const mousePos = (e.clientX - rect.left) / rect.width;
-    const duration = mousePositions.length > 0 ? mousePositions[mousePositions.length - 1].time : 1;
-    const mouseTime = mousePos * duration;
+    const videoDuration = videoElement.duration * 1000;
+    const mouseTime = mousePos * videoDuration;
     
     const event = zoomEvents[isDraggingZoom.index];
+    const eventDuration = event.zoomSpeed * 2 + event.holdDuration;
     const minHold = 100;
     
-    if (isDraggingZoom.type === 'left') {
-        const maxStart = event.time + event.holdDuration - minHold;
-        const newStart = Math.max(0, Math.min(mouseTime, maxStart));
+    // ABSOLUTE BOUNDARIES
+    const absoluteMinStart = 0;
+    const absoluteMaxEnd = videoDuration;
+    
+    // Get boundaries from adjacent zoom events to prevent overlap
+    const prevEvent = isDraggingZoom.index > 0 ? zoomEvents[isDraggingZoom.index - 1] : null;
+    const nextEvent = isDraggingZoom.index < zoomEvents.length - 1 ? zoomEvents[isDraggingZoom.index + 1] : null;
+    const prevEventEnd = prevEvent ? prevEvent.time + prevEvent.zoomSpeed * 2 + prevEvent.holdDuration : 0;
+    const nextEventStart = nextEvent ? nextEvent.time : absoluteMaxEnd;
+    
+    if (isDraggingZoom.type === 'move') {
+        // Move entire zoom box
+        let newStart = mouseTime - isDraggingZoom.offsetFromStart;
+        
+        // HARD CLAMP: Cannot go before 0
+        newStart = Math.max(absoluteMinStart, newStart);
+        // HARD CLAMP: Cannot go past video end minus event duration
+        newStart = Math.min(absoluteMaxEnd - eventDuration, newStart);
+        // Don't overlap with previous event
+        newStart = Math.max(prevEventEnd, newStart);
+        // Don't overlap with next event
+        newStart = Math.min(nextEventStart - eventDuration, newStart);
+        
+        // Final safety: ensure we're still valid
+        if (newStart >= 0 && newStart + eventDuration <= absoluteMaxEnd) {
+            event.time = newStart;
+            
+            // Update cursor position to new time
+            const nearestPos = findMousePositionInterpolated(newStart);
+            if (nearestPos) {
+                event.x = nearestPos.x;
+                event.y = nearestPos.y;
+            }
+        }
+    } else if (isDraggingZoom.type === 'left') {
+        // Dragging left handle changes start time and hold duration
+        const currentEnd = event.time + eventDuration;
+        const minStart = Math.max(absoluteMinStart, prevEventEnd);
+        const maxStart = currentEnd - event.zoomSpeed * 2 - minHold;
+        
+        let newStart = Math.max(minStart, Math.min(mouseTime, maxStart));
         const deltaTime = newStart - event.time;
         
         event.time = newStart;
         event.holdDuration = Math.max(minHold, event.holdDuration - deltaTime);
     } else if (isDraggingZoom.type === 'right') {
+        // Dragging right handle changes hold duration
         const eventStart = event.time;
-        const currentEnd = eventStart + event.zoomSpeed * 2 + event.holdDuration;
-        const newEnd = Math.max(eventStart + event.zoomSpeed * 2 + minHold, Math.min(mouseTime, duration));
+        const minEnd = eventStart + event.zoomSpeed * 2 + minHold;
+        
+        // HARD CLAMP: Cannot exceed video duration or next event
+        const maxEnd = Math.min(absoluteMaxEnd, nextEventStart);
+        const newEnd = Math.max(minEnd, Math.min(mouseTime, maxEnd));
         
         event.holdDuration = Math.max(minHold, newEnd - eventStart - event.zoomSpeed * 2);
+    }
+    
+    // FINAL VALIDATION: Ensure event doesn't exceed video duration
+    const finalEnd = event.time + event.zoomSpeed * 2 + event.holdDuration;
+    if (finalEnd > absoluteMaxEnd) {
+        event.holdDuration = Math.max(minHold, absoluteMaxEnd - event.time - event.zoomSpeed * 2);
     }
     
     if (selectedZoomIndex === isDraggingZoom.index) {
@@ -463,14 +660,26 @@ function renderZoomTimeline() {
     const zoomTimeline = document.getElementById('zoom-timeline');
     if (!zoomTimeline) return;
     
-    const duration = mousePositions.length > 0 ? mousePositions[mousePositions.length - 1].time : 1;
+    const videoDuration = videoElement.duration * 1000; // This is the ONLY duration that matters
+    if (!videoDuration || videoDuration <= 0) return;
     
     zoomTimeline.innerHTML = '';
     
     zoomEvents.forEach((event, index) => {
-        const startPercent = (event.time / duration) * 100;
-        const totalDuration = event.zoomSpeed * 2 + event.holdDuration;
-        const widthPercent = (totalDuration / duration) * 100;
+        // Skip events that start past video end
+        if (event.time >= videoDuration) return;
+        
+        const startPercent = (event.time / videoDuration) * 100;
+        let totalDuration = event.zoomSpeed * 2 + event.holdDuration;
+        let eventEnd = event.time + totalDuration;
+        
+        // For DISPLAY only - cap visual width at video duration (don't modify event data)
+        let displayDuration = totalDuration;
+        if (eventEnd > videoDuration) {
+            displayDuration = videoDuration - event.time;
+        }
+        
+        const widthPercent = (displayDuration / videoDuration) * 100;
         
         const marker = document.createElement('div');
         marker.className = 'zoom-marker' + (index === selectedZoomIndex ? ' selected' : '');
@@ -568,11 +777,36 @@ function findMousePositionInterpolated(time) {
     const clampedT = Math.max(0, Math.min(1, t));
     const smoothT = 1 - Math.pow(1 - clampedT, 2);
     
+    // Only return click=true if we've just passed an actual click frame
+    // This ensures the click effect happens AT or just after the click, not before
+    let isClick = false;
+    let clickX = null;
+    let clickY = null;
+    let actualClickTime = null;
+    
+    // Check if prev frame had a click and we're now past it (within 50ms window)
+    if (prev.click && time >= prev.time && time <= prev.time + 50) {
+        isClick = true;
+        clickX = prev.x;
+        clickY = prev.y;
+        actualClickTime = prev.time;
+    }
+    // Also check next frame in case we're right at the click moment
+    else if (next.click && time >= next.time && time <= next.time + 50) {
+        isClick = true;
+        clickX = next.x;
+        clickY = next.y;
+        actualClickTime = next.time;
+    }
+    
     return {
         x: prev.x + (next.x - prev.x) * smoothT,
         y: prev.y + (next.y - prev.y) * smoothT,
         time: time,
-        click: prev.click || next.click
+        click: isClick,
+        clickX: clickX,
+        clickY: clickY,
+        actualClickTime: actualClickTime
     };
 }
 
@@ -581,12 +815,20 @@ function easeInOutCubic(t) {
 }
 
 function findActiveZoomEvent(timeMs) {
+    const videoDuration = videoElement.duration * 1000; // ms
+    
     for (let i = 0; i < zoomEvents.length; i++) {
         const event = zoomEvents[i];
         if (!event.enabled) continue;
         
-        const eventEnd = event.time + event.zoomSpeed * 2 + event.holdDuration;
-        if (timeMs >= event.time && timeMs <= eventEnd) {
+        const zoomInEnd = event.time + event.zoomSpeed;
+        const holdEnd = zoomInEnd + event.holdDuration;
+        const zoomOutEnd = holdEnd + event.zoomSpeed;
+        
+        // Cap the event end at video duration
+        const effectiveEventEnd = Math.min(zoomOutEnd, videoDuration);
+        
+        if (timeMs >= event.time && timeMs <= effectiveEventEnd) {
             return { event, index: i };
         }
     }
@@ -673,16 +915,24 @@ function updateLoop() {
             const zoomInEnd = eventStart + event.zoomSpeed;
             const holdEnd = zoomInEnd + event.holdDuration;
             const zoomOutEnd = holdEnd + event.zoomSpeed;
+            const videoDuration = videoElement.duration * 1000; // Convert to ms
             
             let animatedScale = 1;
+            
+            // If zoom extends past video end, shorten the animation
+            let effectiveZoomOutEnd = zoomOutEnd;
+            if (zoomOutEnd > videoDuration) {
+                effectiveZoomOutEnd = videoDuration;
+            }
             
             if (currentTimeMs < zoomInEnd) {
                 const progress = (currentTimeMs - eventStart) / event.zoomSpeed;
                 animatedScale = 1 + (event.zoomLevel - 1) * easeInOutCubic(progress);
             } else if (currentTimeMs < holdEnd) {
                 animatedScale = event.zoomLevel;
-            } else {
-                const progress = (currentTimeMs - holdEnd) / event.zoomSpeed;
+            } else if (currentTimeMs < effectiveZoomOutEnd) {
+                const zoomOutDuration = effectiveZoomOutEnd - holdEnd;
+                const progress = (currentTimeMs - holdEnd) / zoomOutDuration;
                 animatedScale = event.zoomLevel - (event.zoomLevel - 1) * easeInOutCubic(progress);
             }
             
@@ -717,9 +967,85 @@ function updateLoop() {
     
         cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
         cursor.style.display = 'block';
+        
+        // Handle click effects - use actual click position if available
+        if (cursorSettings.clickEffect !== 'none' && pos.click && pos.actualClickTime !== null) {
+            // Track by actual click time to prevent duplicate effects
+            if (pos.actualClickTime > lastProcessedClickTime) {
+                lastProcessedClickTime = pos.actualClickTime;
+                
+                // Use the actual click position, not the interpolated cursor position
+                let effectX = cursorX;
+                let effectY = cursorY;
+                if (pos.clickX !== null && pos.clickY !== null) {
+                    effectX = pos.clickX * scaleX + (videoRect.left - wrapperRect.left);
+                    effectY = pos.clickY * scaleY + (videoRect.top - wrapperRect.top);
+                }
+                spawnClickEffect(effectX, effectY);
+            }
+        }
+    }
+    
+    // Reset click tracking when video loops or seeks backward
+    if (currentTimeMs < lastProcessedClickTime - 100) {
+        lastProcessedClickTime = -1;
     }
     
     requestAnimationFrame(updateLoop);
+}
+
+function spawnClickEffect(x, y) {
+    const container = document.getElementById('click-effects-container');
+    if (!container) return;
+    
+    const color = cursorSettings.color;
+    
+    if (cursorSettings.clickEffect === 'ripple') {
+        // Create expanding ripple
+        const ripple = document.createElement('div');
+        ripple.className = 'click-effect ripple';
+        ripple.style.left = x + 'px';
+        ripple.style.top = y + 'px';
+        ripple.style.width = '40px';
+        ripple.style.height = '40px';
+        ripple.style.borderColor = color;
+        container.appendChild(ripple);
+        
+        // Remove after animation
+        setTimeout(() => ripple.remove(), 600);
+        
+    } else if (cursorSettings.clickEffect === 'confetti') {
+        // Create confetti particles
+        const colors = [color, '#ff6b6b', '#4ecdc4', '#ffe66d', '#95e1d3'];
+        const particleCount = 12;
+        
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'confetti-particle';
+            particle.style.left = x + 'px';
+            particle.style.top = y + 'px';
+            particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            
+            // Random direction and distance
+            const angle = (i / particleCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+            const distance = 30 + Math.random() * 40;
+            const endX = Math.cos(angle) * distance;
+            const endY = Math.sin(angle) * distance;
+            
+            particle.style.setProperty('--end-x', endX + 'px');
+            particle.style.setProperty('--end-y', endY + 'px');
+            particle.animate([
+                { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${endX}px), calc(-50% + ${endY}px)) scale(0.3)`, opacity: 0 }
+            ], {
+                duration: 600 + Math.random() * 200,
+                easing: 'ease-out'
+            });
+            
+            container.appendChild(particle);
+            setTimeout(() => particle.remove(), 800);
+        }
+    }
 }
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
