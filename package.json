@@ -1,24 +1,16 @@
 {
-  "name": "promo-screen-recorder",
+  "name": "promocam",
   "version": "1.0.0",
-  "description": "Automatic promotional screenshot and screen recording tool",
+  "description": "PromoCam - Screen Recorder Electron App",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "build": "electron-builder"
   },
-  "keywords": [
-    "electron",
-    "screen-recorder",
-    "promotional",
-    "video"
-  ],
   "author": "",
-  "license": "MIT",
+  "license": "ISC",
   "devDependencies": {
-    "electron": "^28.0.0"
-  },
-  "dependencies": {
-    "canvas": "^3.2.1"
+    "electron": "^25.0.0",
+    "electron-builder": "^24.3.0"
   }
 }
