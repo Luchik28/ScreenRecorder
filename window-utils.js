@@ -13,8 +13,14 @@ async function runPowerShellScript(scriptContent, scriptName) {
   const scriptPath = path.join(tempDir, `screenrecorder-${Date.now()}-${scriptName}`);
   try {
     console.log(`Executing PowerShell: ${scriptName}`);
-    fs.writeFileSync(scriptPath, scriptContent, 'utf8');
-    const { stdout, stderr } = await execPromise(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`);
+    // Write with UTF-8 BOM for proper Unicode support
+    const BOM = '\uFEFF';
+    fs.writeFileSync(scriptPath, BOM + scriptContent, 'utf8');
+    // Use -OutputFormat Text and set console encoding to UTF-8
+    const { stdout, stderr } = await execPromise(
+      `chcp 65001 >nul && powershell -ExecutionPolicy Bypass -OutputFormat Text -File "${scriptPath}"`,
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+    );
     if (stderr && !stderr.includes('Picked up _JAVA_OPTIONS')) {
        // Only log real errors, some environments have harmless stderr noise
        console.error('PowerShell Stderr:', stderr);
@@ -76,10 +82,17 @@ $windows = New-Object System.Collections.ArrayList
             
             # Filter out tiny windows and the taskbar
             if ($width -gt 100 -and $height -gt 100 -and $titleStr -ne "Program Manager") {
+                $proc = $null
+                $procName = ""
+                try {
+                    $proc = Get-Process -Id $processId -ErrorAction SilentlyContinue
+                    if ($proc) { $procName = $proc.ProcessName }
+                } catch {}
                 $windows.Add([PSCustomObject]@{
                     Handle = $hWnd.ToInt64()
                     Title = $titleStr
                     ProcessId = $processId
+                    ProcessName = $procName
                 }) | Out-Null
             }
         }

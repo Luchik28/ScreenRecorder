@@ -59,6 +59,8 @@ async function showWindowGrid() {
   selectWindowBtn.classList.add('active');
   fullScreenBtn.classList.remove('active');
   
+  // Add expanded class to toolbar wrapper for animation
+  document.querySelector('.toolbar-wrapper').classList.add('expanded');
   windowGrid.classList.add('active');
   windowGridContainer.innerHTML = '<div style="color:white; text-align:center; padding:20px;">Loading windows...</div>';
   
@@ -77,6 +79,7 @@ async function showWindowGrid() {
     windowGridContainer.innerHTML = '<div style="color:white;text-align:center;">Failed to load windows.<br><br><button id="retrySystemPicker" class="btn-record" style="margin:0 auto;">Use System Selection instead</button></div>';
     document.getElementById('retrySystemPicker').addEventListener('click', () => {
         windowGrid.classList.remove('active');
+        document.querySelector('.toolbar-wrapper').classList.remove('expanded');
         window.electronAPI.shrinkWindow();
         startSystemPicker('window');
     });
@@ -87,6 +90,7 @@ async function showWindowGrid() {
     windowGridContainer.innerHTML = '<div style="color:white;text-align:center;padding:20px;">No windows found.<br>Some applications may be hidden.<br><br><button id="manualPickerBtn" class="btn-record" style="margin:0 auto;">Open System Picker</button></div>';
     document.getElementById('manualPickerBtn').addEventListener('click', () => {
         windowGrid.classList.remove('active');
+        document.querySelector('.toolbar-wrapper').classList.remove('expanded');
         window.electronAPI.shrinkWindow();
         startSystemPicker('window');
     });
@@ -111,12 +115,28 @@ async function showWindowGrid() {
       thumb.style.borderRadius = '8px';
       thumbWrap.appendChild(thumb);
     } else {
+      // No thumbnail available - show placeholder with app initials
       thumbWrap.classList.add('placeholder');
       thumbWrap.style.display = 'flex';
+      thumbWrap.style.flexDirection = 'column';
       thumbWrap.style.alignItems = 'center';
       thumbWrap.style.justifyContent = 'center';
-      thumbWrap.style.background = '#2b2b2b';
-      thumbWrap.textContent = source.name.substring(0, 2).toUpperCase();
+      thumbWrap.style.background = 'linear-gradient(135deg, #3a3a3a 0%, #2b2b2b 100%)';
+      thumbWrap.style.gap = '8px';
+      
+      const initials = document.createElement('span');
+      initials.style.fontSize = '32px';
+      initials.style.fontWeight = '600';
+      initials.style.color = '#888';
+      initials.textContent = source.name.substring(0, 2).toUpperCase();
+      thumbWrap.appendChild(initials);
+      
+      const hint = document.createElement('span');
+      hint.style.fontSize = '10px';
+      hint.style.color = '#666';
+      hint.style.textAlign = 'center';
+      hint.textContent = 'Preview unavailable';
+      thumbWrap.appendChild(hint);
     }
 
     const name = document.createElement('div');
@@ -179,6 +199,7 @@ function selectWindow(sourceId, sourceName, element) {
   console.log('Window selected:', sourceId, 'Handle:', selectedWindowHandle);
   // Hide grid once a window is selected
   windowGrid.classList.remove('active');
+  document.querySelector('.toolbar-wrapper').classList.remove('expanded');
   window.electronAPI.shrinkWindow();
 }
 
@@ -197,6 +218,7 @@ async function selectFullScreen() {
   
   // Hide window grid
   windowGrid.classList.remove('active');
+  document.querySelector('.toolbar-wrapper').classList.remove('expanded');
   window.electronAPI.shrinkWindow();
   
   try {

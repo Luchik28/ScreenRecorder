@@ -115,7 +115,18 @@ app.on('window-all-closed', () => {
 
 ipcMain.handle('get-sources', async () => {
   try {
-    // Suppress console errors from desktopCapturer thumbnails
+    // Apps that cannot be recorded (content-protected or system apps)
+    const unrecordableApps = [
+      'PromoCam',
+      'Promo',
+      'ScreenRecorder', 
+      'Realtek Audio Console',
+      'Windows Input Experience',
+      'TextInputHost',
+      'ApplicationFrameHost'
+    ];
+    
+    // Get thumbnails from desktopCapturer
     const electronSources = await desktopCapturer.getSources({ 
       types: ['window', 'screen'], 
       thumbnailSize: { width: 1280, height: 720 },
@@ -123,17 +134,46 @@ ipcMain.handle('get-sources', async () => {
     }).catch(() => []);
 
     const windows = await getWindows();
-    const results = windows.map(win => {
-      // Improved matching logic: try title, then try substring matches
+    
+    // Filter out unrecordable apps
+    const recordableWindows = windows.filter(win => {
+      // Filter by process name
+      if (win.ProcessName && unrecordableApps.some(app => 
+        win.ProcessName.toLowerCase().includes(app.toLowerCase())
+      )) {
+        return false;
+      }
+      // Filter by window title
+      if (unrecordableApps.some(app => 
+        win.Title.toLowerCase().includes(app.toLowerCase())
+      )) {
+        return false;
+      }
+      return true;
+    });
+    
+    const results = recordableWindows.map(win => {
+      // Improved matching: try exact title, substring, then process name hints
       let match = electronSources.find(s => s.name === win.Title);
       if (!match) {
-        match = electronSources.find(s => win.Title.includes(s.name) || s.name.includes(win.Title));
+        match = electronSources.find(s => 
+          win.Title.toLowerCase().includes(s.name.toLowerCase()) || 
+          s.name.toLowerCase().includes(win.Title.toLowerCase())
+        );
+      }
+      // Try matching by partial words in title
+      if (!match) {
+        const titleWords = win.Title.toLowerCase().split(/[\s\-–—|:]+/).filter(w => w.length > 3);
+        match = electronSources.find(s => 
+          titleWords.some(word => s.name.toLowerCase().includes(word))
+        );
       }
       
       return {
         id: `win32:${win.Handle}`,
         name: win.Title,
         handle: win.Handle,
+        processName: win.ProcessName || '',
         thumbnail: match ? match.thumbnail.toDataURL() : null,
         appIcon: match ? match.appIcon?.toDataURL() : null
       };

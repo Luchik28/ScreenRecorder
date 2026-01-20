@@ -7,45 +7,47 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="toolbar">
-    <!-- Close button on left -->
-    <button id="closeBtn" class="btn-close" title="Close">
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <circle cx="9" cy="9" r="8" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M6 6l6 6M12 6l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-    </button>
-    
-    <!-- Capture mode icons -->
-    <div class="capture-modes">
-      <button id="fullScreenBtn" class="mode-btn" title="Capture Entire Screen">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-          <rect x="3" y="5" width="20" height="16" rx="2"/>
+  <div class="toolbar-wrapper">
+    <div class="toolbar">
+      <!-- Close button on left -->
+      <button id="closeBtn" class="btn-close" title="Close">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="9" cy="9" r="8" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M6 6l6 6M12 6l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
-      <button id="selectWindowBtn" class="mode-btn active" title="Capture Selected Window">
-        <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-          <rect x="4" y="6" width="18" height="14" rx="2"/>
-          <rect x="4" y="6" width="18" height="4" rx="2" fill="currentColor" fill-opacity="0.3"/>
-          <circle cx="6.5" cy="8.5" r="1" fill="currentColor"/>
-          <circle cx="9" cy="8.5" r="1" fill="currentColor"/>
-        </svg>
-      </button>
+      
+      <!-- Capture mode icons -->
+      <div class="capture-modes">
+        <button id="fullScreenBtn" class="mode-btn" title="Capture Entire Screen">
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="5" width="20" height="16" rx="2"/>
+          </svg>
+        </button>
+        <button id="selectWindowBtn" class="mode-btn active" title="Capture Selected Window">
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="4" y="6" width="18" height="14" rx="2"/>
+            <rect x="4" y="6" width="18" height="4" rx="2" fill="currentColor" fill-opacity="0.3"/>
+            <circle cx="6.5" cy="8.5" r="1" fill="currentColor"/>
+            <circle cx="9" cy="8.5" r="1" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+      
+      <!-- Right side controls -->
+      <div class="toolbar-right">
+        <div id="selectionStatus" class="selection-status"></div>
+        <div id="countdown" class="countdown"></div>
+        <div id="timer" class="timer"></div>
+        <button id="recordBtn" class="capture-btn" disabled>Record</button>
+        <button id="stopBtn" class="capture-btn stop" style="display: none;">Stop</button>
+      </div>
     </div>
-    
-    <!-- Right side controls -->
-    <div class="toolbar-right">
-      <div id="selectionStatus" class="selection-status"></div>
-      <div id="countdown" class="countdown"></div>
-      <div id="timer" class="timer"></div>
-      <button id="recordBtn" class="capture-btn" disabled>Record</button>
-      <button id="stopBtn" class="capture-btn stop" style="display: none;">Stop</button>
-    </div>
-  </div>
 
-  <!-- Window Grid Overlay -->
-  <div id="windowGrid" class="window-grid">
-    <div id="windowGridContainer" class="window-grid-container"></div>
+    <!-- Window Grid inside toolbar wrapper for expansion animation -->
+    <div id="windowGrid" class="window-grid">
+      <div id="windowGridContainer" class="window-grid-container"></div>
+    </div>
   </div>
 
   <script src="renderer.js"></script>

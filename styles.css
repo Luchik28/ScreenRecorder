@@ -8,12 +8,8 @@ body {
   background: transparent;
 }
 
-/* Main toolbar - macOS screenshot style */
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+/* Toolbar wrapper - expands to contain window grid */
+.toolbar-wrapper {
   background: rgba(180, 170, 175, 0.75);
   backdrop-filter: blur(50px) saturate(200%);
   -webkit-backdrop-filter: blur(50px) saturate(200%);
@@ -22,6 +18,21 @@ body {
     0 2px 20px rgba(0, 0, 0, 0.15),
     inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
   border: 0.5px solid rgba(0, 0, 0, 0.15);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.toolbar-wrapper.expanded {
+  border-radius: 12px;
+}
+
+/* Main toolbar - macOS screenshot style */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: transparent;
   -webkit-app-region: drag;
   transition: all 0.3s ease;
 }
@@ -217,24 +228,23 @@ body {
   50% { transform: scale(1.15); }
 }
 
-/* Window Grid Overlay */
+/* Window Grid - inside toolbar wrapper */
 .window-grid {
-  position: fixed;
-  top: 100px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(30, 28, 32, 0.85);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  display: none;
-  z-index: 998;
-  padding: 40px;
-  overflow-y: auto;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.25s ease,
+              padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0 20px;
+  -webkit-app-region: no-drag;
 }
 
 .window-grid.active {
-  display: block;
+  max-height: 700px;
+  opacity: 1;
+  padding: 20px;
+  overflow-y: auto;
 }
 
 .window-grid-container {
@@ -246,36 +256,37 @@ body {
 }
 
 .window-item {
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid transparent;
+  background: transparent;
+  border: none;
   border-radius: 12px;
-  padding: 14px;
+  padding: 0;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  -webkit-app-region: no-drag;
 }
 
 .window-item:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.12);
-  transform: scale(1.02);
+  border-color: transparent;
+  background: transparent;
+  transform: scale(1.05);
 }
 
 .window-item.selected {
-  border-color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.15);
+  border-color: transparent;
+  background: transparent;
 }
 
 .window-thumbnail {
   width: 100%;
   aspect-ratio: 16 / 9;
-  background: #1a1a1a;
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -296,7 +307,7 @@ body {
 .window-name {
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(40, 35, 38, 0.9);
   text-align: center;
   width: 100%;
   white-space: nowrap;
