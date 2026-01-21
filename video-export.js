@@ -9,10 +9,11 @@ class VideoExporter {
     }
 
     async exportWithEffects(options, progressCallback) {
-        const { videoPath, outputPath, mouseData, trimStart, trimDuration, zoomEvents, cursorSettings, autoZoomEnabled } = options;
+        const { videoPath, outputPath, mouseData, trimStart, trimDuration, zoomEvents, cursorSettings, autoZoomEnabled, backgroundSettings } = options;
         
         // Store cursor settings for drawing
         this.cursorSettings = cursorSettings || { style: 'windows', color: '#a855f7', size: 24 };
+        this.backgroundSettings = backgroundSettings || { wallpaper: 'none', os: 'none', appScale: 0.9, appX: 0, appY: 0 };
         
         const tempFramesDir = path.join(path.dirname(outputPath), `temp_frames_${Date.now()}`);
         fs.mkdirSync(tempFramesDir, { recursive: true });
@@ -158,45 +159,127 @@ class VideoExporter {
                 // Find interpolated mouse position for smooth movement
                 const pos = this.findMousePositionInterpolated(mouseData, frameTime + trimStartMs);
                 
-                // Calculate zoom state for this frame
-                const zoomState = autoZoomEnabled ? 
-                    this.calculateZoomState(frameTime, zoomEvents) :
-                    { scale: 1, active: false };
-                
-                // Draw the frame (with zoom if active)
-                if (zoomState.active && zoomState.scale > 1) {
-                    this.drawZoomedFrame(ctx, img, zoomState.x, zoomState.y, zoomState.scale);
-                } else {
-                    ctx.drawImage(img, 0, 0);
-                }
-                
-                // Draw cursor if mouse position exists
-                if (pos) {
-                    // Adjust cursor position if zoomed
-                    let cursorX = pos.x;
-                    let cursorY = pos.y;
-                    
+                const bgEnabled = this.backgroundSettings && this.backgroundSettings.wallpaper && this.backgroundSettings.wallpaper !== 'none';
+
+                if (!bgEnabled) {
+                    // Original behavior: zoom crops the video content
+                    const zoomState = autoZoomEnabled ? 
+                        this.calculateZoomState(frameTime, zoomEvents) :
+                        { scale: 1, active: false };
+
                     if (zoomState.active && zoomState.scale > 1) {
-                        // Transform cursor position to match zoomed frame
-                        const width = img.width;
-                        const height = img.height;
-                        const scale = zoomState.scale;
-                        
-                        // Calculate the source view rectangle (same as in drawZoomedFrame)
-                        const viewWidth = width / scale;
-                        const viewHeight = height / scale;
-                        
-                        let srcX = zoomState.x - viewWidth / 2;
-                        let srcY = zoomState.y - viewHeight / 2;
-                        srcX = Math.max(0, Math.min(width - viewWidth, srcX));
-                        srcY = Math.max(0, Math.min(height - viewHeight, srcY));
-                        
-                        // Transform cursor from source coordinates to screen coordinates
-                        cursorX = (pos.x - srcX) * scale;
-                        cursorY = (pos.y - srcY) * scale;
+                        this.drawZoomedFrame(ctx, img, zoomState.x, zoomState.y, zoomState.scale);
+                    } else {
+                        ctx.drawImage(img, 0, 0);
                     }
-                    
-                    this.drawCursor(ctx, cursorX, cursorY);
+
+                    if (pos) {
+                        let cursorX = pos.x;
+                        let cursorY = pos.y;
+
+                        if (zoomState.active && zoomState.scale > 1) {
+                            const width = img.width;
+                            const height = img.height;
+                            const scale = zoomState.scale;
+                            const viewWidth = width / scale;
+                            const viewHeight = height / scale;
+                            let srcX = zoomState.x - viewWidth / 2;
+                            let srcY = zoomState.y - viewHeight / 2;
+                            srcX = Math.max(0, Math.min(width - viewWidth, srcX));
+                            srcY = Math.max(0, Math.min(height - viewHeight, srcY));
+                            cursorX = (pos.x - srcX) * scale;
+                            cursorY = (pos.y - srcY) * scale;
+                        }
+
+                        this.drawCursor(ctx, cursorX, cursorY);
+                    }
+                } else {
+                    // New behavior: render a scene (wallpaper + app window) and zoom the whole scene like a camera
+                    const width = img.width;
+                    const height = img.height;
+
+                    // Camera zoom state (x/y are recorded coords; we map to scene below)
+                    const zoomState = autoZoomEnabled ? this.calculateZoomState(frameTime, zoomEvents) : { scale: 1, x: 0, y: 0, active: false };
+                    const cameraScale = (zoomState.active && zoomState.scale > 1) ? zoomState.scale : 1;
+
+                    // App window geometry
+                    const appScale = typeof this.backgroundSettings.appScale === 'number' ? this.backgroundSettings.appScale : 0.9;
+                    const appX = (width / 2) - (width * appScale / 2) + (this.backgroundSettings.appX || 0);
+                    const appY = (height / 2) - (height * appScale / 2) + (this.backgroundSettings.appY || 0);
+                    const chromeTop = this.backgroundSettings.os === 'mac' ? (34 * appScale) : 0;
+                    const chromeBottom = this.backgroundSettings.os === 'windows' ? (44 * appScale) : 0;
+
+                    const windowW = width * appScale;
+                    const windowH = height * appScale + chromeTop + chromeBottom;
+                    const radius = 14 * appScale;
+
+                    // Focus point for camera: map zoom focus from recorded coords into scene coords
+                    // (point within the app content area)
+                    const focusX = appX + (zoomState.x * appScale);
+                    const focusY = appY + chromeTop + (zoomState.y * appScale);
+
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const tx = centerX - cameraScale * focusX;
+                    const ty = centerY - cameraScale * focusY;
+
+                    ctx.setTransform(cameraScale, 0, 0, cameraScale, tx, ty);
+
+                    // Draw wallpaper
+                    this.drawWallpaper(ctx, width, height, this.backgroundSettings.wallpaper);
+
+                    // Draw window chrome + app content
+                    ctx.save();
+                    this.roundRect(ctx, appX, appY, windowW, windowH, radius);
+                    ctx.clip();
+
+                    // Window background
+                    ctx.fillStyle = 'rgba(17,17,17,0.98)';
+                    ctx.fillRect(appX, appY, windowW, windowH);
+
+                    // Chrome
+                    if (chromeTop > 0) {
+                        ctx.fillStyle = 'rgba(30,30,30,0.95)';
+                        ctx.fillRect(appX, appY, windowW, chromeTop);
+                        // mac dots
+                        const dotY = appY + chromeTop / 2;
+                        const dotX = appX + 16 * appScale;
+                        const r = 6 * appScale;
+                        ctx.fillStyle = '#ff5f57'; ctx.beginPath(); ctx.arc(dotX, dotY, r, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#febc2e'; ctx.beginPath(); ctx.arc(dotX + 16 * appScale, dotY, r, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#28c840'; ctx.beginPath(); ctx.arc(dotX + 32 * appScale, dotY, r, 0, Math.PI * 2); ctx.fill();
+                    }
+                    if (chromeBottom > 0) {
+                        ctx.fillStyle = 'rgba(25,25,25,0.95)';
+                        ctx.fillRect(appX, appY + windowH - chromeBottom, windowW, chromeBottom);
+                        // simple taskbar pills
+                        const baseY = appY + windowH - chromeBottom / 2;
+                        const startX = appX + windowW / 2 - (30 * appScale);
+                        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                        for (let k = 0; k < 4; k++) {
+                            ctx.fillRect(startX + k * (16 * appScale), baseY - (5 * appScale), 10 * appScale, 10 * appScale);
+                        }
+                    }
+
+                    // App content (video frame)
+                    ctx.drawImage(
+                        img,
+                        appX,
+                        appY + chromeTop,
+                        width * appScale,
+                        height * appScale
+                    );
+                    ctx.restore();
+
+                    // Draw cursor in scene coords
+                    if (pos) {
+                        const cursorX = appX + (pos.x * appScale);
+                        const cursorY = appY + chromeTop + (pos.y * appScale);
+                        this.drawCursor(ctx, cursorX, cursorY);
+                    }
+
+                    // Reset transform for next frame operations
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
                 }
                 
                 // Save processed frame
@@ -215,6 +298,123 @@ class VideoExporter {
                 throw err;
             }
         }
+    }
+
+    drawWallpaper(ctx, width, height, wallpaper) {
+        if (!wallpaper || wallpaper === 'none') {
+            ctx.clearRect(0, 0, width, height);
+            return;
+        }
+
+        // simple procedural wallpapers (no external assets)
+        if (wallpaper === 'studio') {
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, '#0b0b10');
+            grad.addColorStop(0.55, '#101018');
+            grad.addColorStop(1, '#0b0b10');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            const g1 = ctx.createRadialGradient(width * 0.2, height * 0.15, 0, width * 0.2, height * 0.15, Math.max(width, height));
+            g1.addColorStop(0, 'rgba(168,85,247,0.35)');
+            g1.addColorStop(1, 'rgba(168,85,247,0)');
+            ctx.fillStyle = g1;
+            ctx.fillRect(0, 0, width, height);
+
+            const g2 = ctx.createRadialGradient(width * 0.85, height * 0.2, 0, width * 0.85, height * 0.2, Math.max(width, height));
+            g2.addColorStop(0, 'rgba(59,130,246,0.30)');
+            g2.addColorStop(1, 'rgba(59,130,246,0)');
+            ctx.fillStyle = g2;
+            ctx.fillRect(0, 0, width, height);
+            return;
+        }
+
+        if (wallpaper === 'sunset') {
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, '#130912');
+            grad.addColorStop(0.55, '#1a0d2a');
+            grad.addColorStop(1, '#0d0b12');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            const g1 = ctx.createRadialGradient(width * 0.15, height * 0.2, 0, width * 0.15, height * 0.2, Math.max(width, height));
+            g1.addColorStop(0, 'rgba(255,122,24,0.35)');
+            g1.addColorStop(1, 'rgba(255,122,24,0)');
+            ctx.fillStyle = g1;
+            ctx.fillRect(0, 0, width, height);
+
+            const g2 = ctx.createRadialGradient(width * 0.8, height * 0.3, 0, width * 0.8, height * 0.3, Math.max(width, height));
+            g2.addColorStop(0, 'rgba(255,45,85,0.25)');
+            g2.addColorStop(1, 'rgba(255,45,85,0)');
+            ctx.fillStyle = g2;
+            ctx.fillRect(0, 0, width, height);
+            return;
+        }
+
+        if (wallpaper === 'midnight') {
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, '#070a12');
+            grad.addColorStop(0.55, '#0a1020');
+            grad.addColorStop(1, '#070a12');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            const g1 = ctx.createRadialGradient(width * 0.3, height * 0.2, 0, width * 0.3, height * 0.2, Math.max(width, height));
+            g1.addColorStop(0, 'rgba(34,197,94,0.18)');
+            g1.addColorStop(1, 'rgba(34,197,94,0)');
+            ctx.fillStyle = g1;
+            ctx.fillRect(0, 0, width, height);
+
+            const g2 = ctx.createRadialGradient(width * 0.8, height * 0.6, 0, width * 0.8, height * 0.6, Math.max(width, height));
+            g2.addColorStop(0, 'rgba(59,130,246,0.22)');
+            g2.addColorStop(1, 'rgba(59,130,246,0)');
+            ctx.fillStyle = g2;
+            ctx.fillRect(0, 0, width, height);
+            return;
+        }
+
+        if (wallpaper === 'neon') {
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, '#07070c');
+            grad.addColorStop(0.55, '#0c0818');
+            grad.addColorStop(1, '#07070c');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            const g1 = ctx.createRadialGradient(width * 0.25, height * 0.25, 0, width * 0.25, height * 0.25, Math.max(width, height));
+            g1.addColorStop(0, 'rgba(0,255,255,0.18)');
+            g1.addColorStop(1, 'rgba(0,255,255,0)');
+            ctx.fillStyle = g1;
+            ctx.fillRect(0, 0, width, height);
+
+            const g2 = ctx.createRadialGradient(width * 0.8, height * 0.2, 0, width * 0.8, height * 0.2, Math.max(width, height));
+            g2.addColorStop(0, 'rgba(255,0,255,0.16)');
+            g2.addColorStop(1, 'rgba(255,0,255,0)');
+            ctx.fillStyle = g2;
+            ctx.fillRect(0, 0, width, height);
+
+            const g3 = ctx.createRadialGradient(width * 0.7, height * 0.8, 0, width * 0.7, height * 0.8, Math.max(width, height));
+            g3.addColorStop(0, 'rgba(255,255,0,0.12)');
+            g3.addColorStop(1, 'rgba(255,255,0,0)');
+            ctx.fillStyle = g3;
+            ctx.fillRect(0, 0, width, height);
+            return;
+        }
+    }
+
+    roundRect(ctx, x, y, w, h, r) {
+        const radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + w - radius, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+        ctx.lineTo(x + w, y + h - radius);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+        ctx.lineTo(x + radius, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
     }
 
     // Interpolated mouse position for smooth cursor movement

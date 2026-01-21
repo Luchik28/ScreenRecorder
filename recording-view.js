@@ -4,8 +4,28 @@ const fs = require('fs');
 
 let mousePositions = [];
 let videoElement = null;
+let videoElementScene = null; // Scene mode video element
 let cursor = null;
+let cursorScene = null;
 let currentVideoPath = '';
+let sceneMode = false; // Toggle between fullscreen video and scene mode
+
+// Background / scene settings
+let backgroundSettings = {
+    wallpaper: 'none', // none | studio | sunset | midnight | neon
+    os: 'none',         // none | mac | windows
+    appScale: 1.0,      // 0.5 - 2.0
+    appX: 0,            // px offset inside wrapper
+    appY: 0,            // px offset inside wrapper
+    borderRadius: 6    // px corner rounding
+};
+
+let activeSettingsTab = 'cursor';
+let isDraggingApp = false;
+let dragStart = null; // { x, y, startAppX, startAppY }
+
+// Track the scene transform we apply for zoom: screen = base * scale + translate
+let sceneTransformState = { scale: 1, tx: 0, ty: 0 };
 
 // Editor State
 let trimStart = 0;
@@ -49,7 +69,9 @@ let currentZoomState = {
 
 window.addEventListener('DOMContentLoaded', async () => {
     videoElement = document.getElementById('player');
+    videoElementScene = document.getElementById('player-scene');
     cursor = document.getElementById('purple-cursor');
+    cursorScene = document.getElementById('cursor-scene');
     
     const params = new URLSearchParams(window.location.search);
     currentVideoPath = params.get('video');
@@ -61,7 +83,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             const blob = new Blob([videoData], { type: 'video/mp4' });
             const blobUrl = URL.createObjectURL(blob);
             videoElement.src = blobUrl;
+            videoElementScene.src = blobUrl;
             videoElement.load();
+            videoElementScene.load();
         } catch (error) {
             console.error('Failed to load video:', error);
             alert('Error loading video: ' + error.message);
@@ -82,6 +106,16 @@ window.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('pause-icon').style.display = 'block';
             
             renderZoomTimeline();
+        });
+
+        // Sync scene video with main video
+        videoElement.addEventListener('play', () => videoElementScene.play());
+        videoElement.addEventListener('pause', () => videoElementScene.pause());
+        videoElement.addEventListener('seeked', () => { videoElementScene.currentTime = videoElement.currentTime; });
+        videoElement.addEventListener('timeupdate', () => {
+            if (Math.abs(videoElementScene.currentTime - videoElement.currentTime) > 0.1) {
+                videoElementScene.currentTime = videoElement.currentTime;
+            }
         });
 
         videoElement.addEventListener('error', (e) => {
@@ -107,6 +141,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     setupTimeline();
     setupTabs();
     setupCursorSettings();
+    setupBackgroundSettings();
     setupZoomSettings();
     setupZoomTimeline();
     
@@ -119,6 +154,161 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     requestAnimationFrame(updateLoop);
 });
+
+function applyBackgroundToScene() {
+    if (!sceneMode) return;
+    
+    const bg = document.getElementById('background-layer');
+    const appWindow = document.getElementById('app-window');
+    const chromeTop = document.getElementById('os-chrome-top');
+    const chromeBottom = document.getElementById('os-chrome-bottom');
+    if (!bg || !appWindow) return;
+
+    const wallpaper = backgroundSettings.wallpaper;
+    if (wallpaper === 'none') {
+        bg.style.backgroundImage = 'none';
+        bg.style.backgroundColor = 'transparent';
+    } else if (wallpaper === 'studio') {
+        bg.style.backgroundImage = 'radial-gradient(1200px 800px at 20% 15%, rgba(168,85,247,0.35), transparent 60%), radial-gradient(900px 700px at 85% 20%, rgba(59,130,246,0.30), transparent 55%), linear-gradient(135deg, #0b0b10, #101018 55%, #0b0b10)';
+        bg.style.backgroundColor = '#0b0b10';
+    } else if (wallpaper === 'sunset') {
+        bg.style.backgroundImage = 'radial-gradient(900px 700px at 15% 20%, rgba(255,122,24,0.35), transparent 60%), radial-gradient(1000px 800px at 80% 30%, rgba(255,45,85,0.25), transparent 60%), linear-gradient(135deg, #130912, #1a0d2a 55%, #0d0b12)';
+        bg.style.backgroundColor = '#0d0b12';
+    } else if (wallpaper === 'midnight') {
+        bg.style.backgroundImage = 'radial-gradient(900px 700px at 30% 20%, rgba(34,197,94,0.18), transparent 60%), radial-gradient(1000px 800px at 80% 60%, rgba(59,130,246,0.22), transparent 60%), linear-gradient(135deg, #070a12, #0a1020 55%, #070a12)';
+        bg.style.backgroundColor = '#070a12';
+    } else if (wallpaper === 'neon') {
+        bg.style.backgroundImage = 'radial-gradient(900px 700px at 25% 25%, rgba(0,255,255,0.18), transparent 60%), radial-gradient(900px 700px at 80% 20%, rgba(255,0,255,0.16), transparent 60%), radial-gradient(900px 700px at 70% 80%, rgba(255,255,0,0.12), transparent 60%), linear-gradient(135deg, #07070c, #0c0818 55%, #07070c)';
+        bg.style.backgroundColor = '#07070c';
+    }
+
+    // Show/hide OS chrome overlays at screen edges
+    if (chromeTop) chromeTop.style.display = backgroundSettings.os === 'mac' ? 'block' : 'none';
+    if (chromeBottom) chromeBottom.style.display = backgroundSettings.os === 'windows' ? 'block' : 'none';
+
+    // Apply app scale + position
+    appWindow.style.setProperty('--app-scale', String(backgroundSettings.appScale));
+    appWindow.style.setProperty('--app-x', `${backgroundSettings.appX}px`);
+    appWindow.style.setProperty('--app-y', `${backgroundSettings.appY}px`);
+    appWindow.style.borderRadius = `${backgroundSettings.borderRadius}px`;
+}
+
+function setupBackgroundSettings() {
+    const bgOptions = document.querySelectorAll('.bg-option');
+    const osOptions = document.querySelectorAll('.os-option');
+    const advanced = document.getElementById('bg-advanced');
+    const screenSize = document.getElementById('screenSize');
+    const screenSizeVal = document.getElementById('screenSizeVal');
+    const resetBtn = document.getElementById('reset-position');
+    const wrapper = document.getElementById('container');
+
+    // Wallpaper button group
+    bgOptions.forEach(btn => {
+        btn.addEventListener('click', () => {
+            bgOptions.forEach(b => {
+                b.style.borderColor = 'var(--border)';
+                b.classList.remove('selected');
+            });
+            btn.style.borderColor = 'var(--primary)';
+            btn.classList.add('selected');
+            backgroundSettings.wallpaper = btn.dataset.bg;
+            
+            // Toggle scene mode
+            sceneMode = backgroundSettings.wallpaper !== 'none';
+            document.getElementById('scene').style.display = sceneMode ? 'block' : 'none';
+            document.getElementById('player').style.display = sceneMode ? 'none' : 'block';
+            document.getElementById('click-effects-container').style.display = sceneMode ? 'none' : 'block';
+            document.getElementById('purple-cursor').style.display = sceneMode ? 'none' : 'block';
+            
+            if (advanced) {
+                advanced.style.display = sceneMode ? 'block' : 'none';
+            }
+            applyBackgroundToScene();
+        });
+    });
+
+    // OS button group
+    osOptions.forEach(btn => {
+        btn.addEventListener('click', () => {
+            osOptions.forEach(b => {
+                b.style.background = '#111';
+                b.style.borderColor = 'var(--border)';
+                b.style.color = '#888';
+                b.classList.remove('selected');
+            });
+            btn.style.background = 'rgba(168,85,247,0.2)';
+            btn.style.borderColor = 'var(--primary)';
+            btn.style.color = '#ddd';
+            btn.classList.add('selected');
+            backgroundSettings.os = btn.dataset.os;
+            applyBackgroundToScene();
+        });
+    });
+
+    if (screenSize && screenSizeVal) {
+        screenSize.addEventListener('input', () => {
+            const pct = parseInt(screenSize.value, 10);
+            screenSizeVal.textContent = `${pct}%`;
+            backgroundSettings.appScale = pct / 100;
+            applyBackgroundToScene();
+        });
+    }
+
+    const cornerRadius = document.getElementById('cornerRadius');
+    const cornerRadiusVal = document.getElementById('cornerRadiusVal');
+    if (cornerRadius && cornerRadiusVal) {
+        cornerRadius.addEventListener('input', () => {
+            const radius = parseInt(cornerRadius.value, 10);
+            cornerRadiusVal.textContent = `${radius}px`;
+            backgroundSettings.borderRadius = radius;
+            applyBackgroundToScene();
+        });
+    }
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            backgroundSettings.appX = 0;
+            backgroundSettings.appY = 0;
+            applyBackgroundToScene();
+        });
+    }
+
+    // Drag app window around scene when Background tab is selected
+    if (wrapper) {
+        wrapper.addEventListener('mousedown', (e) => {
+            if (activeSettingsTab !== 'background' || !sceneMode) return;
+            if (e.button !== 0) return;
+            const target = e.target;
+            if (target.closest('.settings-panel') || target.closest('.editor-controls') || target.closest('.header')) return;
+
+            isDraggingApp = true;
+            dragStart = {
+                x: e.clientX,
+                y: e.clientY,
+                startAppX: backgroundSettings.appX,
+                startAppY: backgroundSettings.appY
+            };
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDraggingApp || !dragStart) return;
+            const dx = e.clientX - dragStart.x;
+            const dy = e.clientY - dragStart.y;
+            backgroundSettings.appX = dragStart.startAppX + dx;
+            backgroundSettings.appY = dragStart.startAppY + dy;
+            applyBackgroundToScene();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDraggingApp = false;
+            dragStart = null;
+        });
+    }
+
+    // Initialize
+    if (advanced) advanced.style.display = 'none';
+    applyBackgroundToScene();
+}
 
 function initializeZoomEvents() {
     zoomEvents = [];
@@ -218,6 +408,7 @@ function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(tab => {
         tab.addEventListener('click', () => {
             const tabName = tab.dataset.tab;
+            activeSettingsTab = tabName;
             
             document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -359,39 +550,43 @@ function updateCursorAppearance() {
     const size = cursorSettings.size;
     const color = cursorSettings.color;
     
-    cursor.innerHTML = '';
-    cursor.style.width = size + 'px';
-    cursor.style.height = size + 'px';
+    // Update both cursors (fullscreen and scene)
+    const cursors = [cursor, cursorScene].filter(c => c);
     
-    switch (cursorSettings.style) {
+    cursors.forEach(c => {
+        c.innerHTML = '';
+        c.style.width = size + 'px';
+        c.style.height = size + 'px';
+    });
+    
+    const cursorHtml = getCursorHtml(cursorSettings.style, size, color);
+    cursors.forEach(c => {
+        c.innerHTML = cursorHtml;
+    });
+}
+
+function getCursorHtml(style, size, color) {
+    switch (style) {
         case 'windows':
-            // Use actual Windows cursor appearance with color tint
-            cursor.innerHTML = `<svg viewBox="0 0 32 32" width="${size}" height="${size}" style="filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.5));">
+            return `<svg viewBox="0 0 32 32" width="${size}" height="${size}" style="filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.5));">
                 <path d="M0.5,0.5 L0.5,22.5 L6.5,16.5 L10,25.5 L13.5,24 L10,15 L17.5,15 L0.5,0.5 Z" fill="${color}" stroke="white" stroke-width="1"/>
             </svg>`;
-            break;
         case 'mac':
-            // Use actual Mac cursor appearance with color tint
-            cursor.innerHTML = `<svg viewBox="0 0 24 32" width="${size*0.75}" height="${size}" style="filter: drop-shadow(0.5px 0.5px 0.5px rgba(0,0,0,0.5));">
+            return `<svg viewBox="0 0 24 32" width="${size*0.75}" height="${size}" style="filter: drop-shadow(0.5px 0.5px 0.5px rgba(0,0,0,0.5));">
                 <path d="M2,0.5 L2,21.5 L8,15.5 L11,26.5 L13,25.5 L10,14.5 L16,14.5 L2,0.5 Z" fill="${color}" stroke="white" stroke-width="0.8"/>
             </svg>`;
-            break;
         case 'dot':
-            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:50%; border:2px solid white; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
-            break;
+            return `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:50%; border:2px solid white; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
         case 'ring':
-            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; border:3px solid ${color}; border-radius:50%; box-sizing:border-box; box-shadow: 0 0 0 1px white inset, 0 0 0 1px white, 0 2px 4px rgba(0,0,0,0.3);"></div>`;
-            break;
+            return `<div style="width:${size}px; height:${size}px; border:3px solid ${color}; border-radius:50%; box-sizing:border-box; box-shadow: 0 0 0 1px white inset, 0 0 0 1px white, 0 2px 4px rgba(0,0,0,0.3);"></div>`;
         case 'square':
-            cursor.innerHTML = `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:3px; border:2px solid white; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
-            break;
+            return `<div style="width:${size}px; height:${size}px; background:${color}; border-radius:3px; border:2px solid white; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
         case 'crosshair':
             const half = size / 2;
-            cursor.innerHTML = `<div style="position:relative; width:${size}px; height:${size}px;">
+            return `<div style="position:relative; width:${size}px; height:${size}px;">
                 <div style="position:absolute; width:2px; height:${size}px; left:${half-1}px; top:0; background:${color}; box-shadow: 0 0 0 1px white;"></div>
                 <div style="position:absolute; height:2px; width:${size}px; top:${half-1}px; left:0; background:${color}; box-shadow: 0 0 0 1px white;"></div>
             </div>`;
-            break;
     }
 }
 
@@ -889,120 +1084,199 @@ function updateLoop() {
     const pos = findMousePositionInterpolated(currentTimeMs);
     if (pos) {
         const wrapper = document.querySelector('.video-preview-wrapper');
-        const videoRect = videoElement.getBoundingClientRect();
-        
-        const displayWidth = videoRect.width;
-        const displayHeight = videoRect.height;
-        const recordedWidth = videoElement.videoWidth;
-        const recordedHeight = videoElement.videoHeight;
-
-        if (recordedWidth === 0 || recordedHeight === 0) {
-            requestAnimationFrame(updateLoop);
-            return;
-        }
-
-        const scaleX = displayWidth / recordedWidth;
-        const scaleY = displayHeight / recordedHeight;
-
-        let cursorX = pos.x;
-        let cursorY = pos.y;
-        
         const activeZoom = autoZoomEnabled ? findActiveZoomEvent(currentTimeMs) : null;
-        
-        // Get click-effects-container to apply same transform as video
-        const clickEffectsContainer = document.getElementById('click-effects-container');
-        
-        if (activeZoom) {
-            const event = activeZoom.event;
-            const eventStart = event.time;
-            const zoomInEnd = eventStart + event.zoomSpeed;
-            const holdEnd = zoomInEnd + event.holdDuration;
-            const zoomOutEnd = holdEnd + event.zoomSpeed;
-            const videoDuration = videoElement.duration * 1000; // Convert to ms
-            
-            let animatedScale = 1;
-            
-            // If zoom extends past video end, shorten the animation
-            let effectiveZoomOutEnd = zoomOutEnd;
-            if (zoomOutEnd > videoDuration) {
-                effectiveZoomOutEnd = videoDuration;
+
+        if (!sceneMode) {
+            // Fullscreen mode (original behavior)
+            const videoRect = videoElement.getBoundingClientRect();
+            const displayWidth = videoRect.width;
+            const displayHeight = videoRect.height;
+            const recordedWidth = videoElement.videoWidth;
+            const recordedHeight = videoElement.videoHeight;
+
+            if (recordedWidth === 0 || recordedHeight === 0) {
+                requestAnimationFrame(updateLoop);
+                return;
             }
-            
-            if (currentTimeMs < zoomInEnd) {
-                const progress = (currentTimeMs - eventStart) / event.zoomSpeed;
-                animatedScale = 1 + (event.zoomLevel - 1) * easeInOutCubic(progress);
-            } else if (currentTimeMs < holdEnd) {
-                animatedScale = event.zoomLevel;
-            } else if (currentTimeMs < effectiveZoomOutEnd) {
-                const zoomOutDuration = effectiveZoomOutEnd - holdEnd;
-                const progress = (currentTimeMs - holdEnd) / zoomOutDuration;
-                animatedScale = event.zoomLevel - (event.zoomLevel - 1) * easeInOutCubic(progress);
+
+            const scaleX = displayWidth / recordedWidth;
+            const scaleY = displayHeight / recordedHeight;
+
+            let cursorX = pos.x;
+            let cursorY = pos.y;
+
+            const clickEffectsContainer = document.getElementById('click-effects-container');
+
+            if (activeZoom) {
+                const event = activeZoom.event;
+                const eventStart = event.time;
+                const zoomInEnd = eventStart + event.zoomSpeed;
+                const holdEnd = zoomInEnd + event.holdDuration;
+                const zoomOutEnd = holdEnd + event.zoomSpeed;
+                const videoDuration = videoElement.duration * 1000;
+
+                let animatedScale = 1;
+                let effectiveZoomOutEnd = zoomOutEnd;
+                if (zoomOutEnd > videoDuration) effectiveZoomOutEnd = videoDuration;
+
+                if (currentTimeMs < zoomInEnd) {
+                    const progress = (currentTimeMs - eventStart) / event.zoomSpeed;
+                    animatedScale = 1 + (event.zoomLevel - 1) * easeInOutCubic(progress);
+                } else if (currentTimeMs < holdEnd) {
+                    animatedScale = event.zoomLevel;
+                } else if (currentTimeMs < effectiveZoomOutEnd) {
+                    const zoomOutDuration = Math.max(1, effectiveZoomOutEnd - holdEnd);
+                    const progress = (currentTimeMs - holdEnd) / zoomOutDuration;
+                    animatedScale = event.zoomLevel - (event.zoomLevel - 1) * easeInOutCubic(progress);
+                }
+
+                const viewWidth = recordedWidth / animatedScale;
+                const viewHeight = recordedHeight / animatedScale;
+
+                let srcX = event.x - viewWidth / 2;
+                let srcY = event.y - viewHeight / 2;
+                srcX = Math.max(0, Math.min(recordedWidth - viewWidth, srcX));
+                srcY = Math.max(0, Math.min(recordedHeight - viewHeight, srcY));
+
+                const centerX = recordedWidth / 2;
+                const centerY = recordedHeight / 2;
+                const srcCenterX = srcX + viewWidth / 2;
+                const srcCenterY = srcY + viewHeight / 2;
+
+                const moveX = ((centerX - srcCenterX) / recordedWidth) * 100;
+                const moveY = ((centerY - srcCenterY) / recordedHeight) * 100;
+
+                const transformValue = `scale(${animatedScale}) translate(${moveX}%, ${moveY}%)`;
+                videoElement.style.transition = 'none';
+                videoElement.style.transform = transformValue;
+
+                if (clickEffectsContainer) {
+                    clickEffectsContainer.style.transform = transformValue;
+                    clickEffectsContainer.style.transformOrigin = 'center center';
+                }
+            } else {
+                videoElement.style.transform = 'scale(1) translate(0, 0)';
+                if (clickEffectsContainer) {
+                    clickEffectsContainer.style.transform = 'scale(1) translate(0, 0)';
+                }
             }
-            
-            const viewWidth = recordedWidth / animatedScale;
-            const viewHeight = recordedHeight / animatedScale;
-            
-            let srcX = event.x - viewWidth / 2;
-            let srcY = event.y - viewHeight / 2;
-            srcX = Math.max(0, Math.min(recordedWidth - viewWidth, srcX));
-            srcY = Math.max(0, Math.min(recordedHeight - viewHeight, srcY));
-            
-            const centerX = recordedWidth / 2;
-            const centerY = recordedHeight / 2;
-            const srcCenterX = srcX + viewWidth / 2;
-            const srcCenterY = srcY + viewHeight / 2;
-            
-            const moveX = ((centerX - srcCenterX) / recordedWidth) * 100;
-            const moveY = ((centerY - srcCenterY) / recordedHeight) * 100;
-            
-            const transformValue = `scale(${animatedScale}) translate(${moveX}%, ${moveY}%)`;
-            videoElement.style.transition = 'none';
-            videoElement.style.transform = transformValue;
-            
-            // Apply same transform to click effects container so effects track with video
-            if (clickEffectsContainer) {
-                clickEffectsContainer.style.transform = transformValue;
-                clickEffectsContainer.style.transformOrigin = 'center center';
+
+            cursorX *= scaleX;
+            cursorY *= scaleY;
+
+            const wrapperRect = wrapper.getBoundingClientRect();
+            cursorX += videoRect.left - wrapperRect.left;
+            cursorY += videoRect.top - wrapperRect.top;
+
+            cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
+            cursor.style.display = 'block';
+
+            if (cursorSettings.clickEffect !== 'none' && pos.click && pos.actualClickTime !== null) {
+                if (pos.actualClickTime > lastProcessedClickTime) {
+                    lastProcessedClickTime = pos.actualClickTime;
+                    let effectX = pos.clickX !== null ? pos.clickX : pos.x;
+                    let effectY = pos.clickY !== null ? pos.clickY : pos.y;
+                    effectX *= scaleX;
+                    effectY *= scaleY;
+                    spawnClickEffect(effectX, effectY);
+                }
             }
         } else {
-            videoElement.style.transform = 'scale(1) translate(0, 0)';
-            if (clickEffectsContainer) {
-                clickEffectsContainer.style.transform = 'scale(1) translate(0, 0)';
+            // Scene mode: camera zoom over background + app window
+            const scene = document.getElementById('scene');
+            const appWindow = document.getElementById('app-window');
+            const wrapperRect = wrapper.getBoundingClientRect();
+            const videoRect = videoElementScene.getBoundingClientRect();
+            
+            const displayWidth = videoRect.width;
+            const displayHeight = videoRect.height;
+            const recordedWidth = videoElementScene.videoWidth;
+            const recordedHeight = videoElementScene.videoHeight;
+
+            if (recordedWidth === 0 || recordedHeight === 0) {
+                requestAnimationFrame(updateLoop);
+                return;
             }
-        }
-        
-        cursorX *= scaleX;
-        cursorY *= scaleY;
-        
-        const wrapperRect = wrapper.getBoundingClientRect();
-        cursorX += videoRect.left - wrapperRect.left;
-        cursorY += videoRect.top - wrapperRect.top;
-    
-        cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
-        cursor.style.display = 'block';
-        
-        // Handle click effects - spawn at cursor position, container tracks with video
-        if (cursorSettings.clickEffect !== 'none' && pos.click && pos.actualClickTime !== null) {
-            // Track by actual click time to prevent duplicate effects
-            if (pos.actualClickTime > lastProcessedClickTime) {
-                lastProcessedClickTime = pos.actualClickTime;
+
+            const scaleX = displayWidth / recordedWidth;
+            const scaleY = displayHeight / recordedHeight;
+
+            // Cursor in video-relative coords
+            let cursorX = pos.x * scaleX;
+            let cursorY = pos.y * scaleY;
+
+            // Position cursor within app window (before any scene transforms)
+            cursorScene.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
+            cursorScene.style.display = 'block';
+
+            // Camera zoom - use ORIGINAL cursor position in video space for zoom focus
+            if (scene && activeZoom) {
+                const event = activeZoom.event;
+                const eventStart = event.time;
+                const zoomInEnd = eventStart + event.zoomSpeed;
+                const holdEnd = zoomInEnd + event.holdDuration;
+                const zoomOutEnd = holdEnd + event.zoomSpeed;
+                const videoDuration = videoElement.duration * 1000;
+
+                let animatedScale = 1;
+                let effectiveZoomOutEnd = zoomOutEnd;
+                if (zoomOutEnd > videoDuration) effectiveZoomOutEnd = videoDuration;
+
+                if (currentTimeMs < zoomInEnd) {
+                    const progress = (currentTimeMs - eventStart) / event.zoomSpeed;
+                    animatedScale = 1 + (event.zoomLevel - 1) * easeInOutCubic(progress);
+                } else if (currentTimeMs < holdEnd) {
+                    animatedScale = event.zoomLevel;
+                } else if (currentTimeMs < effectiveZoomOutEnd) {
+                    const zoomOutDuration = Math.max(1, effectiveZoomOutEnd - holdEnd);
+                    const progress = (currentTimeMs - holdEnd) / zoomOutDuration;
+                    animatedScale = event.zoomLevel - (event.zoomLevel - 1) * easeInOutCubic(progress);
+                }
+
+                // Get app window's center position in the wrapper (unaffected by zoom)
+                const appRect = appWindow.getBoundingClientRect();
+                const appCenterX = appRect.left - wrapperRect.left + appRect.width / 2;
+                const appCenterY = appRect.top - wrapperRect.top + appRect.height / 2;
                 
-                // Use the actual click position in original video coordinates
-                let effectX = pos.clickX !== null ? pos.clickX : pos.x;
-                let effectY = pos.clickY !== null ? pos.clickY : pos.y;
+                // Zoom focus: zoom event's x,y position scaled to display size, relative to app window center
+                const zoomFocusX = event.x * scaleX;
+                const zoomFocusY = event.y * scaleY;
                 
-                // Scale to display size (same as cursor before zoom transform)
-                effectX *= scaleX;
-                effectY *= scaleY;
+                // Calculate where this focus point is in scene coords
+                const focusSceneX = appCenterX - appRect.width / 2 + zoomFocusX;
+                const focusSceneY = appCenterY - appRect.height / 2 + zoomFocusY;
+
+                const centerX = wrapperRect.width / 2;
+                const centerY = wrapperRect.height / 2;
                 
-                // The click-effects-container now has the same transform as the video,
-                // so we just need the basic scaled position (no zoom math needed)
-                spawnClickEffect(effectX, effectY);
+                let tx = centerX - animatedScale * focusSceneX;
+                let ty = centerY - animatedScale * focusSceneY;
+
+                // Clamp to prevent zooming outside the scene bounds
+                const scaledSceneW = wrapperRect.width * animatedScale;
+                const scaledSceneH = wrapperRect.height * animatedScale;
+                tx = Math.min(0, Math.max(wrapperRect.width - scaledSceneW, tx));
+                ty = Math.min(0, Math.max(wrapperRect.height - scaledSceneH, ty));
+
+                scene.style.transformOrigin = '0 0';
+                scene.style.transform = `translate(${tx}px, ${ty}px) scale(${animatedScale})`;
+            } else if (scene) {
+                scene.style.transform = 'translate(0px, 0px) scale(1)';
+            }
+
+            if (cursorSettings.clickEffect !== 'none' && pos.click && pos.actualClickTime !== null) {
+                if (pos.actualClickTime > lastProcessedClickTime) {
+                    lastProcessedClickTime = pos.actualClickTime;
+                    let effectX = pos.clickX !== null ? pos.clickX : pos.x;
+                    let effectY = pos.clickY !== null ? pos.clickY : pos.y;
+                    effectX *= scaleX;
+                    effectY *= scaleY;
+                    spawnClickEffect(effectX, effectY, true);
+                }
             }
         }
     }
-    
-    // Reset click tracking when video loops or seeks backward
+
     if (currentTimeMs < lastProcessedClickTime - 100) {
         lastProcessedClickTime = -1;
     }
@@ -1010,27 +1284,27 @@ function updateLoop() {
     requestAnimationFrame(updateLoop);
 }
 
-function spawnClickEffect(x, y) {
-    const container = document.getElementById('click-effects-container');
+function spawnClickEffect(x, y, isScene = false) {
+    const container = isScene 
+        ? document.getElementById('click-effects-scene') 
+        : document.getElementById('click-effects-container');
+    
     if (!container) return;
     
+    const effectType = cursorSettings.clickEffect;
     const color = cursorSettings.color;
     
-    if (cursorSettings.clickEffect === 'ripple') {
-        // Create expanding ripple
+    if (effectType === 'ripple') {
+        // Create ripple effect
         const ripple = document.createElement('div');
-        ripple.className = 'click-effect ripple';
+        ripple.className = 'click-ripple';
         ripple.style.left = x + 'px';
         ripple.style.top = y + 'px';
-        ripple.style.width = '40px';
-        ripple.style.height = '40px';
         ripple.style.borderColor = color;
+        
         container.appendChild(ripple);
-        
-        // Remove after animation
         setTimeout(() => ripple.remove(), 600);
-        
-    } else if (cursorSettings.clickEffect === 'confetti') {
+    } else if (effectType === 'confetti') {
         // Create confetti particles
         const colors = [color, '#ff6b6b', '#4ecdc4', '#ffe66d', '#95e1d3'];
         const particleCount = 12;
@@ -1089,7 +1363,8 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
         trimDuration: trimDuration,
         zoomEvents: zoomEvents,
         cursorSettings: cursorSettings,
-        autoZoomEnabled: autoZoomEnabled
+        autoZoomEnabled: autoZoomEnabled,
+        backgroundSettings: backgroundSettings
     });
 });
 
